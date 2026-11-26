@@ -2,7 +2,7 @@
 
 A low-latency order book and matching engine in C++20, built by replaying real NASDAQ TotalView-ITCH 5.0 market data.
 
-> Work in progress. Stages 1–3 of 7 are done: the parser, the baseline book and the fast book.
+> Work in progress. Stages 1–4 of 7 are done: the parser, the baseline and fast books, and the matching engine.
 
 ## Status
 
@@ -11,7 +11,7 @@ A low-latency order book and matching engine in C++20, built by replaying real N
 | 1 | Zero-copy ITCH 5.0 parser, tests, tools | ✅ |
 | 2 | Baseline `std::map` order book + per-message correctness check | ✅ |
 | 3 | Fast order book (flat price ladder, preallocated order map) + latency percentiles | ✅ |
-| 4 | Price-time matching engine + randomized differential test | — |
+| 4 | Price-time matching engine + randomized differential test | ✅ |
 | 5 | Lock-free SPSC pipeline (parser thread → engine thread) | — |
 | 6 | Benchmark report: latency histograms, ablation table | — |
 | 7 | Architecture diagram, final results | — |
@@ -96,17 +96,37 @@ Results (fill in from `results/parse.json`):
 |---|---|---|---|---|---|---|---|
 | NASDAQ 12302019, 1.5 GB slice | map | 167 | 1.0× | 125 ns | 833 ns | 1167 ns | MacBook |
 | NASDAQ 12302019, 1.5 GB slice | fast, before recentering | 69 | 2.40× | 125 ns | 459 ns | 792 ns | MacBook |
-| NASDAQ 12302019, 1.5 GB slice | fast | — | —× | — | — | — | MacBook |
+| NASDAQ 12302019, 1.5 GB slice | fast | — | 3.15× | 125 ns | 333 ns | 708 ns | MacBook |
 | Synthetic 20M, 256 stocks | map | 172 | 1.0× | 286 ns | 741 ns | 2376 ns | 2-vCPU x86 cloud VM (sanity check only) |
 | Synthetic 20M, 256 stocks | fast | 80 | 2.1× | 163 ns | 431 ns | 556 ns | 2-vCPU x86 cloud VM (sanity check only) |
+
+## Stage 4: matching engine
+
+```bash
+./build/engine_bench   # 10 seeds x 1M random orders diffed, then throughput + latency -> results/engine.json
+```
+
+ITCH data is already matched, so the engine runs on its own order flow: `engine::OrderFlow` generates deterministic random limit, market and cancel orders around a drifting mid. About 15% of limits are priced through the touch, and some cancels target orders that have already filled.
+
+- **Semantics.** Price-time priority. An incoming order trades at the resting order's price: best price first, then oldest first within a price. A limit's remainder rests at the back of its level's queue, a market order's remainder is cancelled, and cancel removes a resting order. Rejects: duplicate id, unknown id, price 0 or outside the band, quantity 0.
+- **`engine::RefEngine`.** `std::map<price, std::deque<order>>`, written to be obviously correct.
+- **`engine::FastEngine`.** A flat ladder with one level per tick. Each level is an **intrusive doubly-linked FIFO** of nodes from a preallocated pool, so adding at the back, filling from the front and cancelling from the middle are all O(1). A **two-level bitmap** (64-bit words plus a summary bit per word) finds the next price in a few word scans across a 65,536-tick band. Order id → node uses the same flat open-addressing map as Stage 3, sized at 2× the pool so it never grows. Nothing is allocated after construction.
+- **Cache sizing matters.** The default pool holds 65,536 resting orders per symbol. Sizing for 1M orders made the id map 32 MB and nearly doubled the cost per order: 23 ns/order at 16K capacity, 27 at 64K and 41 at 1M (x86 VM).
+- **Differential test.** Every order goes to both engines. After every order it compares the result, the exact fill sequence (taker, maker, price, qty), both best quotes and the open-order count. It also checks invariants: the book never crosses after matching, and limit-order shares are conserved. Every 10K orders it compares both full books, including the order of every queue. A mutation test that fills the newest order first instead of the oldest is caught on the first affected order.
+
+| Machine | Diff test | Orders/s | ns/order | Fills/s | Speedup vs ref | p50 | p99 | p99.9 |
+|---|---|---|---|---|---|---|---|---|
+| MacBook | — | — | — | — | — | — | — | — |
+| 2-vCPU x86 cloud VM (sanity check only) | 4/4 seeds × 1M passed | 39.9M | 25.1 | 6.9M | 3.96× | 60 ns | 146 ns | 260 ns |
 
 ## Layout
 
 ```
 include/itch/   endian.hpp  messages.hpp  parser.hpp  encoder.hpp  synthetic.hpp  mapped_file.hpp
 include/lob/    map_book.hpp  fast_book.hpp  order_map.hpp  book_builder.hpp  checker.hpp
+include/engine/ types.hpp  ref_engine.hpp  fast_engine.hpp  order_flow.hpp  diff.hpp
 include/bench/  latency.hpp
-tools/          itch_stats  itch_slice  gen_synthetic  book_replay
+tools/          itch_stats  itch_slice  gen_synthetic  book_replay  engine_bench
 tests/          GoogleTest unit tests
 scripts/        fetch_sample.sh
 results/        JSON written by the tools; README tables are filled from these

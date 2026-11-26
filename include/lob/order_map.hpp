@@ -46,12 +46,14 @@ private:
     std::unordered_map<std::uint64_t, RestingOrder> m_;
 };
 
-class FlatOrderMap {
+// Open-addressing uint64 -> V map. V must be trivially copyable.
+template <class V>
+class BasicFlatMap {
 public:
     // capacity is rounded up to a power of two. 4M slots * 24 B = 96 MB.
-    explicit FlatOrderMap(std::size_t capacity = std::size_t{1} << 22) { init(round_pow2(capacity)); }
+    explicit BasicFlatMap(std::size_t capacity = std::size_t{1} << 22) { init(round_pow2(capacity)); }
 
-    RestingOrder* find(std::uint64_t ref) {
+    V* find(std::uint64_t ref) {
         for (std::size_t i = home(ref);; i = (i + 1) & mask_) {
             Slot& s = slots_[i];
             if (s.key == ref) return &s.val;
@@ -59,9 +61,9 @@ public:
         }
     }
 
-    const RestingOrder* find(std::uint64_t ref) const { return const_cast<FlatOrderMap*>(this)->find(ref); }
+    const V* find(std::uint64_t ref) const { return const_cast<BasicFlatMap*>(this)->find(ref); }
 
-    bool insert(std::uint64_t ref, const RestingOrder& o) {
+    bool insert(std::uint64_t ref, const V& o) {
         if (size_ + 1 > max_load_) [[unlikely]] grow();
         for (std::size_t i = home(ref);; i = (i + 1) & mask_) {
             Slot& s = slots_[i];
@@ -109,7 +111,7 @@ public:
 private:
     struct Slot {
         std::uint64_t key;
-        RestingOrder val;
+        V val;
     };
     static constexpr std::uint64_t kEmpty = ~std::uint64_t{0};
 
@@ -149,5 +151,7 @@ private:
     std::size_t max_load_ = 0;
     std::uint64_t grows_ = 0;
 };
+
+using FlatOrderMap = BasicFlatMap<RestingOrder>;
 
 }  // namespace lob
