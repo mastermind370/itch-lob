@@ -3,14 +3,15 @@
 #
 #   scripts/run_all.sh [ITCH_FILE] [PIPELINE_RATE_M]
 #
-# Defaults: data/12302019.slice.itch and a 4M msgs/s paced pipeline run.
+# Defaults: data/12302019.slice.itch and a 2M msgs/s paced pipeline run (4M fell
+# behind on a MacBook whenever anything else was running).
 # Takes roughly 10-15 minutes on a laptop. Close other apps first: background
 # load shows up as noise in the medians and as spikes in the latency tails.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 FILE="${1:-data/12302019.slice.itch}"
-RATE="${2:-4}"
+RATE="${2:-2}"
 [ -f "$FILE" ] || { echo "missing $FILE (run scripts/fetch_sample.sh first)"; exit 1; }
 
 cmake --build build -j

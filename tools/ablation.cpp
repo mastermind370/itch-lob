@@ -14,6 +14,8 @@
 // speed or temperature hits every variant equally. Reports median and range of
 // ns/msg, counters, and the final book digest (must be identical for all).
 // Writes results/ablation.json.
+#include <unistd.h>
+
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -83,12 +85,15 @@ void run_once(const itch::MappedFile& f, Result& r) {
             r.overflow_adds += b->book(static_cast<std::uint16_t>(i)).overflow_adds();
             r.recenters += b->book(static_cast<std::uint16_t>(i)).recenters();
         }
+        // Reserved = what mmap actually maps: the ladder size rounded up to whole pages.
+        const std::size_t page = static_cast<std::size_t>(::sysconf(_SC_PAGESIZE));
+        const std::size_t mapped = (Book::ladder_bytes() + page - 1) / page * page;
         std::size_t res = 0, virt = 0;
         for (std::size_t i = 0; i < lob::kMaxLocates; ++i) {
             const auto& bk = b->book(static_cast<std::uint16_t>(i));
             if (!bk.has_ladder()) continue;
             res += bk.ladder_resident_bytes();
-            virt += Book::ladder_bytes();
+            virt += mapped;
         }
         r.ladder_mb = res / 1e6;
         r.ladder_virtual_mb = virt / 1e6;
