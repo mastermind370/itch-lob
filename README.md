@@ -12,7 +12,7 @@ A low-latency order book and matching engine in C++20. It rebuilds every NASDAQ 
 | Order book replay (parse + book) | 18.9M msgs/s, **3.49×** the std::map baseline |
 | Book latency per message | p50 125 ns, **p99 417 ns**, p99.9 1167 ns |
 | Matching engine (price-time) | 86.2M orders/s, 11.6 ns/order, 4.87× the reference |
-| Two-thread SPSC pipeline | 13.9M msgs/s; queue adds 83 ns at p50 |
+| Two-thread SPSC pipeline | 16.3M msgs/s; queue adds 84 ns at p50 |
 | Correctness | 50.9M per-message level checks and 46.5M best bid/ask checks, 0 mismatches; 10/10 randomized engine seeds × 1M orders identical to the reference |
 
 Input: 48.1M messages of real NASDAQ data (12/30/2019 sample). Full tables, ablations and latency plots: [`results/REPORT.md`](results/REPORT.md).

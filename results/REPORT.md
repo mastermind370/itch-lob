@@ -76,26 +76,24 @@ Order-pool capacity vs cost per order. The id map is 2× capacity × 16 B; once 
 
 ## Two-thread pipeline
 
-Parser thread → SPSC ring (4096 × 40 B) → book thread; 5 interleaved runs, placement: qos=user-interactive.
+Parser thread → SPSC ring (4096 × 40 B) → book thread; 3 interleaved runs, placement: qos=user-interactive.
 
 | Variant | M msgs/s (median) | Range | vs inline |
 |---|---|---|---|
-| inline (1 thread, no queue) | 17.68 | 15.52 – 18.65 | 1.00× |
-| pipeline: padded + cached + batched head | 13.94 | 12.52 – 15.04 | 0.79× |
-| − head batching | 11.52 | 9.84 – 11.86 | 0.65× |
-| − cache-line padding | 9.16 | 8.30 – 9.59 | 0.52× |
-| − index caching (naive) | 10.16 | 7.37 – 10.99 | 0.57× |
+| inline (1 thread, no queue) | 19.43 | 17.01 – 19.55 | 1.00× |
+| pipeline: padded + cached + batched head | 16.31 | 16.10 – 16.37 | 0.84× |
+| − head batching | 13.49 | 13.48 – 13.52 | 0.69× |
+| − cache-line padding | 10.90 | 10.77 – 10.92 | 0.56× |
+| − index caching (naive) | 11.76 | 11.59 – 11.82 | 0.61× |
 
-End-to-end latency at 2.0M msgs/s, paced (producer late for 2.07% of sends):
+End-to-end latency at 1.0M msgs/s, paced (producer late for 0.07% of sends):
 
 | Path | p50 | p90 | p99 | p99.9 | p99.99 |
 |---|---|---|---|---|---|
-| inline, no queue | 125 | 250 | 500 | 1,667 | 9,959 |
-| through the queue | 208 | 416 | 111719 | 2,211,866 | 4,686,457 |
+| inline, no queue | 125 | 167 | 333 | 792 | 3,934 |
+| through the queue | 209 | 333 | 542 | 4,185 | 38,851 |
 
-During the paced run: 59,111 involuntary and 0 voluntary context switches. Each involuntary switch stalls a spinning thread for microseconds and shows up directly in the p99.9+ tail. macOS has no hard core pinning, so these can't be eliminated there.
-
-**Warning:** the producer fell behind the paced rate, so these latencies include queueing. Rerun `pipeline_bench` with a lower `--rate`.
+During the paced run: 341 involuntary and 0 voluntary context switches. Each involuntary switch stalls a spinning thread for microseconds and shows up directly in the p99.9+ tail. macOS has no hard core pinning, so these can't be eliminated there.
 
 ![Pipeline ablation](plots/ablation_pipeline.svg)
 
