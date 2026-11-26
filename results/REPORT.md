@@ -21,17 +21,17 @@ Each variant replays the full file; 5 interleaved runs, median and range of ns p
 
 | Variant | ns/msg (median) | Range | vs baseline | vs previous step | M msgs/s | adds to overflow | ladder RAM |
 |---|---|---|---|---|---|---|---|
-| baseline: std::map book + std::unordered_map orders | 209.5 | 188.1 – 220.0 | 1.00× | — | 4.8 | — | — |
-| + flat open-addressing order map | 113.0 | 102.7 – 122.7 | 1.85× | 1.85× | 8.8 | — | — |
-| flat ladder (recentering) + std::unordered_map | 129.8 | 120.2 – 161.5 | 1.61× | 1.61× | 7.7 | 2,183,479 | 433 MB of 296 MB reserved |
-| + flat price ladder (no recentering) | 81.0 | 72.3 – 102.9 | 2.59× | 1.40× | 12.3 | 9,321,606 | 425 MB of 296 MB reserved |
-| + recenter window on the touch | 63.5 | 54.2 – 70.8 | 3.30× | 1.28× | 15.8 | 2,183,479 | 433 MB of 296 MB reserved |
-| window 8,192 ticks (+/- $41) | 60.9 | 52.2 – 64.6 | 3.44× | 1.04× | 16.4 | 839,327 | 720 MB of 1184 MB reserved |
-| window 32,768 ticks (+/- $164) | 61.2 | 53.1 – 72.3 | 3.42× | 1.04× | 16.3 | 560,032 | 912 MB of 4736 MB reserved |
+| baseline: std::map book + std::unordered_map orders | 184.5 | 174.7 – 185.0 | 1.00× | — | 5.4 | — | — |
+| + flat open-addressing order map | 101.1 | 98.0 – 102.7 | 1.82× | 1.82× | 9.9 | — | — |
+| flat ladder (recentering) + std::unordered_map | 120.8 | 119.8 – 128.1 | 1.53× | 1.53× | 8.3 | 2,183,479 | 433 MB of 437 MB reserved |
+| + flat price ladder (no recentering) | 73.0 | 72.6 – 75.6 | 2.53× | 1.39× | 13.7 | 9,321,606 | 425 MB of 437 MB reserved |
+| + recenter window on the touch | 54.7 | 54.4 – 56.9 | 3.37× | 1.33× | 18.3 | 2,183,479 | 433 MB of 437 MB reserved |
+| window 8,192 ticks (+/- $41) | 52.8 | 52.1 – 54.5 | 3.49× | 1.04× | 18.9 | 839,327 | 720 MB of 1311 MB reserved |
+| window 32,768 ticks (+/- $164) | 54.6 | 53.6 – 55.3 | 3.38× | 1.00× | 18.3 | 560,032 | 912 MB of 4808 MB reserved |
 
 “vs previous step” follows baseline → flat orders → flat ladder → recenter; the window rows compare against the 2,048-tick recentering book; “flat ladder + std::unordered_map” isolates the ladder alone. Ladders are mmap'd, so a wide window reserves address space but only touched pages use RAM (measured with `mincore`).
 
-Fastest window: **8,192 ticks** (60.9 ns/msg, 839,327 overflow adds). Build with it: `cmake -S . -B build -DITCH_LADDER_WINDOW=8192`.
+Fastest window: **8,192 ticks** (52.8 ns/msg, 839,327 overflow adds). Build with it: `cmake -S . -B build -DITCH_LADDER_WINDOW=8192`.
 
 Hardware counters: not available on this machine. On Linux, `ablation` reads cycles, instructions, branch and cache misses through `perf_event_open`; macOS exposes them only to Instruments or to root via the private kperf framework, and most VMs don't expose them at all.
 
@@ -43,8 +43,8 @@ Each message timed individually (parse + book update), including timer overhead.
 
 | Book | mean | p50 | p90 | p99 | p99.9 | p99.99 | max |
 |---|---|---|---|---|---|---|---|
-| std::map | 357 | 250 | 833 | 1500 | 2375 | 28143 | 121,288,000 |
-| fast | 152 | 125 | 250 | 625 | 1459 | 13792 | 5,566,800 |
+| std::map | 257 | 167 | 542 | 1166 | 2042 | 14125 | 91,552,200 |
+| fast | 114 | 125 | 208 | 417 | 1167 | 6125 | 498,507 |
 
 Clock resolution 41 ns: every sample is a multiple of it, so percentiles below about 41 ns are not meaningful.
 
@@ -56,19 +56,19 @@ Clock resolution 41 ns: every sample is a multiple of it, so percentiles below a
 
 | Engine | M orders/s | ns/order | M fills/s |
 |---|---|---|---|
-| reference (std::map + std::deque) | 17.15 | 58.3 | 2.96 |
-| fast | 79.57 | 12.6 (12.5 – 12.6) | 13.74 |
+| reference (std::map + std::deque) | 17.70 | 56.5 | 3.06 |
+| fast | 86.23 | 11.6 (11.5 – 11.9) | 14.89 |
 
-Speedup 4.64×. Per-order latency (fast): p50 41 ns, p99 83 ns, p99.9 125 ns, p99.99 250 ns (clock resolution 41 ns).
+Speedup 4.87×. Per-order latency (fast): p50 41 ns, p99 83 ns, p99.9 125 ns, p99.99 167 ns (clock resolution 41 ns).
 
 Order-pool capacity vs cost per order. The id map is 2× capacity × 16 B; once it outgrows cache, every lookup misses:
 
 | Capacity | id map | ns/order (median) |
 |---|---|---|
-| 16,384 | 0.5 MB | 12.0 |
-| 65,536 | 2.1 MB | 11.9 |
+| 16,384 | 0.5 MB | 11.6 |
+| 65,536 | 2.1 MB | 11.7 |
 | 262,144 | 8.4 MB | 12.2 |
-| 1,048,576 | 33.6 MB | 22.5 |
+| 1,048,576 | 33.6 MB | 18.7 |
 
 ![Engine capacity](plots/engine_capacity.svg)
 
@@ -80,20 +80,20 @@ Parser thread → SPSC ring (4096 × 40 B) → book thread; 5 interleaved runs, 
 
 | Variant | M msgs/s (median) | Range | vs inline |
 |---|---|---|---|
-| inline (1 thread, no queue) | 15.43 | 15.02 – 16.22 | 1.00× |
-| pipeline: padded + cached + batched head | 12.07 | 7.51 – 12.54 | 0.78× |
-| − head batching | 9.81 | 9.71 – 10.42 | 0.64× |
-| − cache-line padding | 8.30 | 7.95 – 8.84 | 0.54× |
-| − index caching (naive) | 10.01 | 8.84 – 10.23 | 0.65× |
+| inline (1 thread, no queue) | 17.68 | 15.52 – 18.65 | 1.00× |
+| pipeline: padded + cached + batched head | 13.94 | 12.52 – 15.04 | 0.79× |
+| − head batching | 11.52 | 9.84 – 11.86 | 0.65× |
+| − cache-line padding | 9.16 | 8.30 – 9.59 | 0.52× |
+| − index caching (naive) | 10.16 | 7.37 – 10.99 | 0.57× |
 
-End-to-end latency at 4.0M msgs/s, paced (producer late for 2.26% of sends):
+End-to-end latency at 2.0M msgs/s, paced (producer late for 2.07% of sends):
 
 | Path | p50 | p90 | p99 | p99.9 | p99.99 |
 |---|---|---|---|---|---|
-| inline, no queue | 125 | 250 | 542 | 1,250 | 5,542 |
-| through the queue | 208 | 625 | 679471 | 1,772,228 | 2,664,946 |
+| inline, no queue | 125 | 250 | 500 | 1,667 | 9,959 |
+| through the queue | 208 | 416 | 111719 | 2,211,866 | 4,686,457 |
 
-During the paced run: 19,596 involuntary and 0 voluntary context switches. Each involuntary switch stalls a spinning thread for microseconds and shows up directly in the p99.9+ tail. macOS has no hard core pinning, so these can't be eliminated there.
+During the paced run: 59,111 involuntary and 0 voluntary context switches. Each involuntary switch stalls a spinning thread for microseconds and shows up directly in the p99.9+ tail. macOS has no hard core pinning, so these can't be eliminated there.
 
 **Warning:** the producer fell behind the paced rate, so these latencies include queueing. Rerun `pipeline_bench` with a lower `--rate`.
 
@@ -104,13 +104,13 @@ During the paced run: 19,596 involuntary and 0 voluntary context switches. Each 
 ## Headline numbers
 
 - Messages replayed: **48.1M**
-- Fast book throughput (parse + book): **15.8M msgs/s** (63.5 ns/msg)
-- Fast book p99 per message: **625 ns** (p99.9 1459 ns)
-- Speedup over std::map baseline: **3.30×**
-- Build: 2,048-tick price window
-- Parser alone: **223M msgs/s** (7.0 GB/s)
-- Matching engine: **79.6M orders/s**, 4.64× the reference, 10/10 randomized seeds passed
+- Fast book throughput (parse + book): **18.9M msgs/s** (52.8 ns/msg)
+- Fast book p99 per message: **417 ns** (p99.9 1167 ns)
+- Speedup over std::map baseline: **3.49×**
+- Build: 8,192-tick price window
+- Parser alone: **223M msgs/s** (6.9 GB/s)
+- Matching engine: **86.2M orders/s**, 4.87× the reference, 10/10 randomized seeds passed
 
 ## Resume bullet
 
-> Replayed 48.1M NASDAQ ITCH 5.0 messages at 15.8M msgs/s with 625 ns p99 latency, 3.3× faster than a std::map baseline, using a flat price ladder and a lock-free SPSC queue.
+> Replayed 48.1M NASDAQ ITCH 5.0 messages at 18.9M msgs/s with 417 ns p99 latency, 3.5× faster than a std::map baseline, using a flat price ladder and a lock-free SPSC queue.

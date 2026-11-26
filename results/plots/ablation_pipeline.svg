@@ -4,41 +4,39 @@
 <text x="16.0" y="42.0" font-size="12" fill="#666666" text-anchor="start" font-weight="normal">ITCH messages per second, end to end (longer is better; whisker = min..max over runs)</text>
 <line x1="360.0" y1="50.0" x2="360.0" y2="226.0" stroke="#e6e6e6" stroke-width="1"/>
 <text x="360.0" y="242.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">0</text>
-<line x1="465.6" y1="50.0" x2="465.6" y2="226.0" stroke="#e6e6e6" stroke-width="1"/>
-<text x="465.6" y="242.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">5</text>
-<line x1="571.3" y1="50.0" x2="571.3" y2="226.0" stroke="#e6e6e6" stroke-width="1"/>
-<text x="571.3" y="242.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">10</text>
-<line x1="676.9" y1="50.0" x2="676.9" y2="226.0" stroke="#e6e6e6" stroke-width="1"/>
-<text x="676.9" y="242.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">15</text>
+<line x1="543.7" y1="50.0" x2="543.7" y2="226.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="543.7" y="242.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">10</text>
+<line x1="727.4" y1="50.0" x2="727.4" y2="226.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="727.4" y="242.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">20</text>
 <text x="545.0" y="260.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">M msgs/s</text>
 <text x="350.0" y="77.0" font-size="12" fill="#191919" text-anchor="end" font-weight="normal">inline (1 thread, no queue)</text>
-<path d="M360,63 h322.0 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-322.0 z" fill="#257de0"><title>inline (1 thread, no queue): 15.43 M msgs/s (range 15.02 .. 16.22)</title></path>
-<line x1="677.3" y1="73.0" x2="702.6" y2="73.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="677.3" y1="68.0" x2="677.3" y2="78.0" stroke="#191919" stroke-width="1.5"/>
+<path d="M360,63 h320.8 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-320.8 z" fill="#257de0"><title>inline (1 thread, no queue): 17.68 M msgs/s (range 15.52 .. 18.65)</title></path>
+<line x1="645.0" y1="73.0" x2="702.6" y2="73.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="645.0" y1="68.0" x2="645.0" y2="78.0" stroke="#191919" stroke-width="1.5"/>
 <line x1="702.6" y1="68.0" x2="702.6" y2="78.0" stroke="#191919" stroke-width="1.5"/>
-<text x="710.6" y="77.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">15.4</text>
+<text x="710.6" y="77.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">17.7</text>
 <text x="350.0" y="111.0" font-size="12" fill="#191919" text-anchor="end" font-weight="normal">pipeline: padded + cached + batched head</text>
-<path d="M360,97 h250.9 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-250.9 z" fill="#257de0"><title>pipeline: padded + cached + batched head: 12.07 M msgs/s (range 7.51 .. 12.54)</title></path>
-<line x1="518.6" y1="107.0" x2="624.9" y2="107.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="518.6" y1="102.0" x2="518.6" y2="112.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="624.9" y1="102.0" x2="624.9" y2="112.0" stroke="#191919" stroke-width="1.5"/>
-<text x="632.9" y="111.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">12.1</text>
+<path d="M360,97 h252.0 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-252.0 z" fill="#257de0"><title>pipeline: padded + cached + batched head: 13.94 M msgs/s (range 12.52 .. 15.04)</title></path>
+<line x1="589.9" y1="107.0" x2="636.4" y2="107.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="589.9" y1="102.0" x2="589.9" y2="112.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="636.4" y1="102.0" x2="636.4" y2="112.0" stroke="#191919" stroke-width="1.5"/>
+<text x="644.4" y="111.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">13.9</text>
 <text x="350.0" y="145.0" font-size="12" fill="#191919" text-anchor="end" font-weight="normal">− head batching</text>
-<path d="M360,131 h203.2 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-203.2 z" fill="#257de0"><title>− head batching: 9.81 M msgs/s (range 9.71 .. 10.42)</title></path>
-<line x1="565.1" y1="141.0" x2="580.2" y2="141.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="565.1" y1="136.0" x2="565.1" y2="146.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="580.2" y1="136.0" x2="580.2" y2="146.0" stroke="#191919" stroke-width="1.5"/>
-<text x="588.2" y="145.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">9.8</text>
+<path d="M360,131 h207.6 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-207.6 z" fill="#257de0"><title>− head batching: 11.52 M msgs/s (range 9.84 .. 11.86)</title></path>
+<line x1="540.8" y1="141.0" x2="577.9" y2="141.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="540.8" y1="136.0" x2="540.8" y2="146.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="577.9" y1="136.0" x2="577.9" y2="146.0" stroke="#191919" stroke-width="1.5"/>
+<text x="585.9" y="145.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">11.5</text>
 <text x="350.0" y="179.0" font-size="12" fill="#191919" text-anchor="end" font-weight="normal">− cache-line padding</text>
-<path d="M360,165 h171.3 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-171.3 z" fill="#257de0"><title>− cache-line padding: 8.30 M msgs/s (range 7.95 .. 8.84)</title></path>
-<line x1="527.9" y1="175.0" x2="546.7" y2="175.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="527.9" y1="170.0" x2="527.9" y2="180.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="546.7" y1="170.0" x2="546.7" y2="180.0" stroke="#191919" stroke-width="1.5"/>
-<text x="554.7" y="179.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">8.3</text>
+<path d="M360,165 h164.2 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-164.2 z" fill="#257de0"><title>− cache-line padding: 9.16 M msgs/s (range 8.30 .. 9.59)</title></path>
+<line x1="512.5" y1="175.0" x2="536.3" y2="175.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="512.5" y1="170.0" x2="512.5" y2="180.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="536.3" y1="170.0" x2="536.3" y2="180.0" stroke="#191919" stroke-width="1.5"/>
+<text x="544.3" y="179.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">9.2</text>
 <text x="350.0" y="213.0" font-size="12" fill="#191919" text-anchor="end" font-weight="normal">− index caching (naive)</text>
-<path d="M360,199 h207.4 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-207.4 z" fill="#257de0"><title>− index caching (naive): 10.01 M msgs/s (range 8.84 .. 10.23)</title></path>
-<line x1="546.8" y1="209.0" x2="576.1" y2="209.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="546.8" y1="204.0" x2="546.8" y2="214.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="576.1" y1="204.0" x2="576.1" y2="214.0" stroke="#191919" stroke-width="1.5"/>
-<text x="584.1" y="213.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">10.0</text>
+<path d="M360,199 h182.6 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-182.6 z" fill="#257de0"><title>− index caching (naive): 10.16 M msgs/s (range 7.37 .. 10.99)</title></path>
+<line x1="495.4" y1="209.0" x2="562.0" y2="209.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="495.4" y1="204.0" x2="495.4" y2="214.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="562.0" y1="204.0" x2="562.0" y2="214.0" stroke="#191919" stroke-width="1.5"/>
+<text x="570.0" y="213.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">10.2</text>
 </svg>

@@ -16,6 +16,8 @@
 
 using namespace itch;
 using lob::FastBook;
+// Tests that reason about where the window edges fall use a fixed 2,048-tick book.
+using Book2K = lob::FastBookT<true, 2048>;
 using lob::FlatOrderMap;
 using lob::MapBook;
 using lob::RestingOrder;
@@ -76,7 +78,7 @@ TEST(FlatOrderMap, GrowsPastCapacity) {
 }
 
 TEST(FastBook, BestPricesAcrossWordBoundaries) {
-    FastBook b;
+    Book2K b;
     // $50.00 anchors the window; levels are 1 cent apart and span many 64-level words.
     b.add(Side::Buy, 500'000, 10);
     b.add(Side::Buy, 490'000, 20);   // 100 ticks lower
@@ -98,7 +100,7 @@ TEST(FastBook, BestPricesAcrossWordBoundaries) {
 }
 
 TEST(FastBook, OverflowOutsideWindowAndOffGrid) {
-    FastBook b;
+    Book2K b;
     b.add(Side::Buy, 1'000'000, 100);  // $100.00 anchors: window ~ $89.76 .. $110.23
     b.add(Side::Buy, 2'000'000, 1);    // far above the window -> overflow, and now the best bid
     b.add(Side::Buy, 999'950, 7);      // sub-penny -> overflow
@@ -115,7 +117,7 @@ TEST(FastBook, OverflowOutsideWindowAndOffGrid) {
 }
 
 TEST(FastBook, SubDollarStockUsesFinerTicks) {
-    FastBook b;
+    Book2K b;
     b.add(Side::Buy, 5'000, 10);  // $0.5000
     b.add(Side::Buy, 4'999, 10);  // $0.4999: on the grid for sub-dollar
     EXPECT_EQ(b.overflow_adds(), 0u);
@@ -211,7 +213,7 @@ TEST(Checker, CatchesStaleBestBid) {
 // recentering, everything near the real touch would live in the overflow map.
 TEST(FastBook, RecentersOnTouchAfterStubAnchor) {
     MapBook ref;
-    FastBook fast;
+    Book2K fast;
     ref.add(Side::Buy, 10'000, 100);
     fast.add(Side::Buy, 10'000, 100);
     SplitMix64 rng(9);
@@ -238,7 +240,7 @@ TEST(FastBook, RecentersOnTouchAfterStubAnchor) {
         ASSERT_EQ(fast.best_ask().shares, ref.best_ask().shares);
     }
     EXPECT_EQ(fast.recenters(), 1u);
-    EXPECT_TRUE(fast.overflow_adds() <= FastBook::kRecenterAfter);  // only until the first recenter...
+    EXPECT_TRUE(fast.overflow_adds() <= Book2K::kRecenterAfter);  // only until the first recenter...
     EXPECT_EQ(fast.level(Side::Buy, 10'000).shares, 100u);                // ...and the stub is kept in overflow
     EXPECT_EQ(fast.level_count(Side::Buy), ref.level_count(Side::Buy));
     EXPECT_TRUE(fast.window_low() <= 500'000 && 500'000 <= fast.window_high());
@@ -246,7 +248,7 @@ TEST(FastBook, RecentersOnTouchAfterStubAnchor) {
 
 // Deep orders far from a touch that is inside the window must not cause recentering.
 TEST(FastBook, NoRecenterWhenTouchIsInWindow) {
-    FastBook b;
+    Book2K b;
     b.add(Side::Buy, 500'000, 100);
     b.add(Side::Sell, 500'100, 100);
     for (int i = 0; i < 5'000; ++i) b.add(Side::Sell, 9'000'000 + 100 * static_cast<Price>(i % 50), 1);

@@ -4,33 +4,33 @@
 <text x="16.0" y="42.0" font-size="12" fill="#666666" text-anchor="start" font-weight="normal">id map = 2 × capacity × 16 B (shorter is better; whisker = min..max over runs)</text>
 <line x1="360.0" y1="50.0" x2="360.0" y2="192.0" stroke="#e6e6e6" stroke-width="1"/>
 <text x="360.0" y="208.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">0</text>
-<line x1="500.5" y1="50.0" x2="500.5" y2="192.0" stroke="#e6e6e6" stroke-width="1"/>
-<text x="500.5" y="208.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">10</text>
-<line x1="640.9" y1="50.0" x2="640.9" y2="192.0" stroke="#e6e6e6" stroke-width="1"/>
-<text x="640.9" y="208.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">20</text>
+<line x1="528.0" y1="50.0" x2="528.0" y2="192.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="528.0" y="208.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">10</text>
+<line x1="696.1" y1="50.0" x2="696.1" y2="192.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="696.1" y="208.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">20</text>
 <text x="545.0" y="226.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">ns per order</text>
 <text x="350.0" y="77.0" font-size="12" fill="#191919" text-anchor="end" font-weight="normal">16,384 orders (0.5 MB map)</text>
-<path d="M360,63 h164.4 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-164.4 z" fill="#257de0"><title>16,384 orders (0.5 MB map): 11.99 ns per order (range 11.88 .. 12.18)</title></path>
-<line x1="526.9" y1="73.0" x2="531.0" y2="73.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="526.9" y1="68.0" x2="526.9" y2="78.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="531.0" y1="68.0" x2="531.0" y2="78.0" stroke="#191919" stroke-width="1.5"/>
-<text x="539.0" y="77.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">12.0</text>
+<path d="M360,63 h190.7 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-190.7 z" fill="#257de0"><title>16,384 orders (0.5 MB map): 11.59 ns per order (range 11.57 .. 12.48)</title></path>
+<line x1="554.5" y1="73.0" x2="569.7" y2="73.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="554.5" y1="68.0" x2="554.5" y2="78.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="569.7" y1="68.0" x2="569.7" y2="78.0" stroke="#191919" stroke-width="1.5"/>
+<text x="577.7" y="77.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">11.6</text>
 <text x="350.0" y="111.0" font-size="12" fill="#191919" text-anchor="end" font-weight="normal">65,536 orders (2.1 MB map)</text>
-<path d="M360,97 h162.9 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-162.9 z" fill="#257de0"><title>65,536 orders (2.1 MB map): 11.88 ns per order (range 11.76 .. 12.02)</title></path>
-<line x1="525.1" y1="107.0" x2="528.8" y2="107.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="525.1" y1="102.0" x2="525.1" y2="112.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="528.8" y1="102.0" x2="528.8" y2="112.0" stroke="#191919" stroke-width="1.5"/>
-<text x="536.8" y="111.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">11.9</text>
+<path d="M360,97 h192.0 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-192.0 z" fill="#257de0"><title>65,536 orders (2.1 MB map): 11.66 ns per order (range 11.58 .. 11.79)</title></path>
+<line x1="554.6" y1="107.0" x2="558.2" y2="107.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="554.6" y1="102.0" x2="554.6" y2="112.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="558.2" y1="102.0" x2="558.2" y2="112.0" stroke="#191919" stroke-width="1.5"/>
+<text x="566.2" y="111.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">11.7</text>
 <text x="350.0" y="145.0" font-size="12" fill="#191919" text-anchor="end" font-weight="normal">262,144 orders (8.4 MB map)</text>
-<path d="M360,131 h167.1 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-167.1 z" fill="#257de0"><title>262,144 orders (8.4 MB map): 12.18 ns per order (range 11.98 .. 13.14)</title></path>
-<line x1="528.3" y1="141.0" x2="544.5" y2="141.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="528.3" y1="136.0" x2="528.3" y2="146.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="544.5" y1="136.0" x2="544.5" y2="146.0" stroke="#191919" stroke-width="1.5"/>
-<text x="552.5" y="145.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">12.2</text>
+<path d="M360,131 h200.4 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-200.4 z" fill="#257de0"><title>262,144 orders (8.4 MB map): 12.16 ns per order (range 11.86 .. 12.22)</title></path>
+<line x1="559.4" y1="141.0" x2="565.4" y2="141.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="559.4" y1="136.0" x2="559.4" y2="146.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="565.4" y1="136.0" x2="565.4" y2="146.0" stroke="#191919" stroke-width="1.5"/>
+<text x="573.4" y="145.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">12.2</text>
 <text x="350.0" y="179.0" font-size="12" fill="#191919" text-anchor="end" font-weight="normal">1,048,576 orders (33.6 MB map)</text>
-<path d="M360,165 h312.5 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-312.5 z" fill="#257de0"><title>1,048,576 orders (33.6 MB map): 22.53 ns per order (range 21.95 .. 24.39)</title></path>
-<line x1="668.3" y1="175.0" x2="702.6" y2="175.0" stroke="#191919" stroke-width="1.5"/>
-<line x1="668.3" y1="170.0" x2="668.3" y2="180.0" stroke="#191919" stroke-width="1.5"/>
+<path d="M360,165 h310.9 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-310.9 z" fill="#257de0"><title>1,048,576 orders (33.6 MB map): 18.74 ns per order (range 17.65 .. 20.39)</title></path>
+<line x1="656.5" y1="175.0" x2="702.6" y2="175.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="656.5" y1="170.0" x2="656.5" y2="180.0" stroke="#191919" stroke-width="1.5"/>
 <line x1="702.6" y1="170.0" x2="702.6" y2="180.0" stroke="#191919" stroke-width="1.5"/>
-<text x="710.6" y="179.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">22.5</text>
+<text x="710.6" y="179.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">18.7</text>
 </svg>
