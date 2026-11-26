@@ -60,7 +60,8 @@ public:
             Stock s;
             s.locate = static_cast<std::uint16_t>(i + 1);
             s.symbol = make_symbol(i);
-            s.mid = 100'000 + static_cast<Price>(rng_.below(2'000'000));  // $10 .. $210
+            // $10 .. $210, on the penny grid like real NASDAQ quotes above $1.
+            s.mid = (100'000 + static_cast<Price>(rng_.below(2'000'000))) / 100 * 100;
             stocks_.push_back(std::move(s));
         }
     }

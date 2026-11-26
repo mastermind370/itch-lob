@@ -1,0 +1,15 @@
+{
+  "book": "fast",
+  "messages": 48058456,
+  "reps": 5,
+  "seconds_best": 3.33496,
+  "seconds_median": 3.3742,
+  "mmsgs_per_s_best": 14.4105,
+  "mmsgs_per_s_median": 14.2429,
+  "ns_per_msg_best": 69.3938,
+  "ns_per_msg_median": 70.2103,
+  "live_orders_end": 1726008,
+  "levels_end": 735322,
+  "overflow_adds": 9321606,
+  "order_map_grows": 0
+}

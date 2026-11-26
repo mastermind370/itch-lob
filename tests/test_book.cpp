@@ -75,7 +75,7 @@ TEST(BookBuilder, AddExecuteCancelDelete) {
     b = replay(buf);
     EXPECT_EQ(b->book(L).best_bid().price, 0u);
     EXPECT_EQ(b->book(L).best_ask().price, 0u);
-    EXPECT_TRUE(b->orders().empty());
+    EXPECT_EQ(b->orders().size(), 0u);
     EXPECT_EQ(b->anomalies().total(), 0u);
 }
 
@@ -89,8 +89,8 @@ TEST(BookBuilder, ReplaceMovesOrderAndKeepsSide) {
     EXPECT_EQ(bk.level(Side::Sell, 2'000'000).shares, 0u);
     EXPECT_EQ(bk.best_ask().price, 1'990'000u);
     EXPECT_EQ(bk.best_ask().shares, 300u);
-    EXPECT_EQ(b->orders().count(10), 0u);
-    EXPECT_EQ(b->orders().count(11), 1u);
+    EXPECT_TRUE(b->orders().find(10) == nullptr);
+    EXPECT_TRUE(b->orders().find(11) != nullptr);
     EXPECT_EQ(b->touched_count(), 2u);
 }
 

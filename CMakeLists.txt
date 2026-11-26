@@ -45,7 +45,7 @@ if(ITCH_BUILD_TESTS)
     FetchContent_MakeAvailable(googletest)
   endif()
 
-  add_executable(unit_tests tests/test_parser.cpp tests/test_book.cpp)
+  add_executable(unit_tests tests/test_parser.cpp tests/test_book.cpp tests/test_fast_book.cpp)
   target_link_libraries(unit_tests PRIVATE itch GTest::gtest_main)
   include(GoogleTest)
   gtest_discover_tests(unit_tests)
