@@ -10,6 +10,13 @@
 // a >$1 stock) goes to a small std::map overflow, so the book is always exact.
 // overflow_adds() reports how often that happens.
 //
+// The window is first centered on the stock's first add. A stock's first order
+// of the day can be far from where it really trades (pre-market stub quotes),
+// so after every kRecenterAfter overflow adds the book checks whether its best
+// bid or ask has left the window. If so, it recenters on the touch: every level
+// is moved between ladder and overflow as needed. This is O(levels), rare, and
+// counted in recenters().
+//
 // The ladder (~33 KB) is allocated on a stock's first add, once per stock,
 // never per message.
 #pragma once
@@ -18,6 +25,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <vector>
 
 #include "lob/map_book.hpp"
 
@@ -25,7 +33,8 @@ namespace lob {
 
 class FastBook {
 public:
-    static constexpr int kWindow = 2048;  // ticks: +/- $10.24 around the first price for a >$1 stock
+    static constexpr int kWindow = 2048;  // ticks: +/- $10.24 around the center for a >$1 stock
+    static constexpr std::uint32_t kRecenterAfter = 256;  // overflow adds between touch checks
 
     void add(Side s, Price p, std::uint32_t q) {
         if (!lad_) [[unlikely]] anchor(p);
@@ -39,6 +48,7 @@ public:
         Level& l = s == Side::Buy ? obids_[p] : oasks_[p];
         l.shares += q;
         ++l.orders;
+        if (++misses_ >= kRecenterAfter) [[unlikely]] maybe_recenter();
     }
 
     void reduce(Side s, Price p, std::uint32_t q, bool order_gone) {
@@ -101,6 +111,9 @@ public:
     }
 
     [[nodiscard]] std::uint64_t overflow_adds() const { return overflow_adds_; }
+    [[nodiscard]] std::uint64_t recenters() const { return recenters_; }
+    [[nodiscard]] Price window_low() const { return lad_ ? base_ : 0; }
+    [[nodiscard]] Price window_high() const { return lad_ ? price_at(kWindow - 1) : 0; }
 
 private:
     static constexpr int kWords = kWindow / 64;
@@ -139,6 +152,14 @@ private:
             if (i == best) best = is_bid ? prev_set(i) : next_set(i);
         }
 
+        // Places a whole level into an empty slot (used when recentering).
+        void put(int i, const Level& l, bool is_bid) {
+            lv[i] = Slot{static_cast<std::uint32_t>(l.shares), l.orders};
+            bits[i >> 6] |= std::uint64_t{1} << (i & 63);
+            ++nlevels;
+            if (best < 0 || (is_bid ? i > best : i < best)) best = i;
+        }
+
         // Highest set index below i, or -1.
         [[nodiscard]] int prev_set(int i) const {
             int w = i >> 6;
@@ -168,10 +189,48 @@ private:
     };
 
     void anchor(Price p) {
+        set_window(p);
+        lad_ = std::make_unique<Ladder>();  // value-initialized: all levels and bits zero
+    }
+
+    void set_window(Price p) {
         tick_ = p >= 10'000 ? 100 : 1;  // Reg NMS: penny ticks at or above $1.00
         const Price center = p / tick_;
         base_ = (center > kWindow / 2 ? center - kWindow / 2 : 0) * tick_;
-        lad_ = std::make_unique<Ladder>();  // value-initialized: all levels and bits zero
+    }
+
+    void maybe_recenter() {
+        misses_ = 0;
+        const Quote b = best_bid(), a = best_ask();
+        int i;
+        const bool bid_ok = b.price == 0 || index(b.price, i);
+        const bool ask_ok = a.price == 0 || index(a.price, i);
+        if (bid_ok && ask_ok) return;  // the touch is in the window; overflow is just deep orders
+        const Price c = b.price && a.price ? b.price / 2 + a.price / 2 : (b.price ? b.price : a.price);
+        recenter(c);
+    }
+
+    void recenter(Price center) {
+        struct Saved { Side side; Price price; Level level; };
+        std::vector<Saved> all;
+        all.reserve(level_count(Side::Buy) + level_count(Side::Sell));
+        for (Side sd : {Side::Buy, Side::Sell})
+            for_each_level(sd, [&](Price p, const Level& l) { all.push_back({sd, p, l}); });
+        obids_.clear();
+        oasks_.clear();
+        lad_->bid = SideLadder{};
+        lad_->ask = SideLadder{};
+        set_window(center);
+        for (const Saved& sv : all) {
+            int i;
+            if (index(sv.price, i)) {
+                if (sv.side == Side::Buy) lad_->bid.put(i, sv.level, true);
+                else lad_->ask.put(i, sv.level, false);
+            } else {
+                (sv.side == Side::Buy ? obids_[sv.price] : oasks_[sv.price]) = sv.level;
+            }
+        }
+        ++recenters_;
     }
 
     [[nodiscard]] bool index(Price p, int& i) const {
@@ -203,6 +262,8 @@ private:
     std::map<Price, Level, std::greater<>> obids_;
     std::map<Price, Level> oasks_;
     std::uint64_t overflow_adds_ = 0;
+    std::uint64_t recenters_ = 0;
+    std::uint32_t misses_ = 0;
 };
 
 }  // namespace lob

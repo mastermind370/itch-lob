@@ -55,7 +55,7 @@ std::vector<std::string> split(const std::string& s) {
 }
 
 struct Summary {
-    std::uint64_t live_orders = 0, levels = 0, books = 0, crossed = 0, overflow_adds = 0, map_grows = 0;
+    std::uint64_t live_orders = 0, levels = 0, books = 0, crossed = 0, overflow_adds = 0, map_grows = 0, recenters = 0;
 };
 
 template <class V>
@@ -65,7 +65,10 @@ Summary summarize(const lob::BookBuilder<typename V::Book, typename V::Orders>& 
     s.map_grows = b.orders().grows();
     for (std::size_t i = 0; i < lob::kMaxLocates; ++i) {
         const auto& bk = b.book(static_cast<std::uint16_t>(i));
-        if constexpr (requires { bk.overflow_adds(); }) s.overflow_adds += bk.overflow_adds();
+        if constexpr (requires { bk.overflow_adds(); }) {
+            s.overflow_adds += bk.overflow_adds();
+            s.recenters += bk.recenters();
+        }
         const std::size_t n = bk.level_count(lob::Side::Buy) + bk.level_count(lob::Side::Sell);
         if (!n) continue;
         ++s.books;
@@ -123,9 +126,36 @@ Throughput run_throughput(const itch::MappedFile& file, int reps, const std::vec
     std::printf("end state     %llu live orders, %llu levels across %llu books, %llu crossed\n",
                 static_cast<unsigned long long>(sum.live_orders), static_cast<unsigned long long>(sum.levels),
                 static_cast<unsigned long long>(sum.books), static_cast<unsigned long long>(sum.crossed));
-    if (std::strcmp(V::name, "fast") == 0)
-        std::printf("fast path     %llu adds went to overflow maps; order map grew %llu times\n",
-                    static_cast<unsigned long long>(sum.overflow_adds), static_cast<unsigned long long>(sum.map_grows));
+    std::string overflow_json = "[]";
+    if constexpr (requires { last->book(0).overflow_adds(); }) {
+        std::printf("fast path     %llu adds went to overflow maps (%.2f%% of messages), %llu window recenters; order map grew %llu times\n",
+                    static_cast<unsigned long long>(sum.overflow_adds), 100.0 * sum.overflow_adds / msgs,
+                    static_cast<unsigned long long>(sum.recenters), static_cast<unsigned long long>(sum.map_grows));
+        // The stocks responsible for most overflow, to see why it happens.
+        std::vector<std::pair<std::uint64_t, std::uint16_t>> top;
+        for (std::size_t i = 0; i < lob::kMaxLocates; ++i) {
+            const auto& bk = last->book(static_cast<std::uint16_t>(i));
+            if (bk.overflow_adds()) top.emplace_back(bk.overflow_adds(), static_cast<std::uint16_t>(i));
+        }
+        std::sort(top.rbegin(), top.rend());
+        if (top.size() > 10) top.resize(10);
+        std::printf("\n top overflow  adds      recenters  window                  bid / ask now\n");
+        std::ostringstream oj;
+        oj << "[";
+        for (std::size_t k = 0; k < top.size(); ++k) {
+            const auto& bk = last->book(top[k].second);
+            const auto bid = bk.best_bid(), ask = bk.best_ask();
+            std::printf(" %-10s %9llu %6llu   %9.4f .. %-9.4f  %9.4f / %.4f\n", last->symbol(top[k].second).c_str(),
+                        static_cast<unsigned long long>(top[k].first), static_cast<unsigned long long>(bk.recenters()),
+                        itch::price_to_double(bk.window_low()), itch::price_to_double(bk.window_high()),
+                        itch::price_to_double(bid.price), itch::price_to_double(ask.price));
+            oj << (k ? "," : "") << "{\"symbol\":\"" << last->symbol(top[k].second) << "\",\"overflow_adds\":"
+               << top[k].first << ",\"recenters\":" << bk.recenters() << ",\"window_low\":" << bk.window_low()
+               << ",\"window_high\":" << bk.window_high() << ",\"bid\":" << bid.price << ",\"ask\":" << ask.price << "}";
+        }
+        oj << "]";
+        overflow_json = oj.str();
+    }
     show_tops(*last, show);
 
     std::ofstream js(std::string("results/") + V::json + ".json");
@@ -134,7 +164,8 @@ Throughput run_throughput(const itch::MappedFile& file, int reps, const std::vec
        << ",\n  \"mmsgs_per_s_best\": " << msgs / t.best / 1e6 << ",\n  \"mmsgs_per_s_median\": " << msgs / t.median / 1e6
        << ",\n  \"ns_per_msg_best\": " << t.best * 1e9 / msgs << ",\n  \"ns_per_msg_median\": " << t.median * 1e9 / msgs
        << ",\n  \"live_orders_end\": " << sum.live_orders << ",\n  \"levels_end\": " << sum.levels
-       << ",\n  \"overflow_adds\": " << sum.overflow_adds << ",\n  \"order_map_grows\": " << sum.map_grows << "\n}\n";
+       << ",\n  \"overflow_adds\": " << sum.overflow_adds << ",\n  \"recenters\": " << sum.recenters
+       << ",\n  \"order_map_grows\": " << sum.map_grows << ",\n  \"overflow_top\": " << overflow_json << "\n}\n";
     std::printf("wrote results/%s.json\n\n", V::json);
     return t;
 }
@@ -174,6 +205,7 @@ template <class V>
 void run_latency(const itch::MappedFile& file) {
     using Builder = lob::BookBuilder<typename V::Book, typename V::Orders>;
     const double npt = bench::ns_per_tick();
+    const double res = bench::resolution_ns();
 
     // Timer overhead: two back-to-back reads.
     bench::Histogram over;
@@ -203,8 +235,8 @@ void run_latency(const itch::MappedFile& file) {
 
     const double ps[] = {50, 90, 99, 99.9, 99.99};
     const char* names[] = {"p50", "p90", "p99", "p99_9", "p99_99"};
-    std::printf("== latency %s: %llu messages, clock resolution %.2f ns/tick\n", V::name,
-                static_cast<unsigned long long>(h.count()), npt);
+    std::printf("== latency %s: %llu messages, clock resolution %.1f ns (samples are multiples of this)\n", V::name,
+                static_cast<unsigned long long>(h.count()), res);
     std::printf("timer overhead p50 %.1f ns (included in every sample below)\n", over.percentile(50) * npt);
     std::printf("mean %.1f ns", h.mean() * npt);
     std::vector<double> vals;
@@ -215,7 +247,7 @@ void run_latency(const itch::MappedFile& file) {
     std::printf(" | max %.1f ns\n", static_cast<double>(h.max()) * npt);
 
     std::ofstream js(std::string("results/latency_") + V::name + ".json");
-    js << "{\n  \"book\": \"" << V::name << "\",\n  \"messages\": " << h.count() << ",\n  \"ns_per_tick\": " << npt
+    js << "{\n  \"book\": \"" << V::name << "\",\n  \"messages\": " << h.count() << ",\n  \"ns_per_tick\": " << npt << ",\n  \"resolution_ns\": " << res
        << ",\n  \"timer_overhead_p50_ns\": " << over.percentile(50) * npt << ",\n  \"mean_ns\": " << h.mean() * npt;
     for (int i = 0; i < 5; ++i) js << ",\n  \"" << names[i] << "_ns\": " << vals[i];
     js << ",\n  \"max_ns\": " << static_cast<double>(h.max()) * npt << ",\n  \"histogram_ticks\": [";

@@ -2,14 +2,16 @@
   "book": "map",
   "messages": 48058456,
   "reps": 5,
-  "seconds_best": 8.00626,
-  "seconds_median": 8.08456,
-  "mmsgs_per_s_best": 6.00261,
-  "mmsgs_per_s_median": 5.94447,
-  "ns_per_msg_best": 166.594,
-  "ns_per_msg_median": 168.223,
+  "seconds_best": 8.03858,
+  "seconds_median": 8.11104,
+  "mmsgs_per_s_best": 5.97848,
+  "mmsgs_per_s_median": 5.92507,
+  "ns_per_msg_best": 167.267,
+  "ns_per_msg_median": 168.774,
   "live_orders_end": 1726008,
   "levels_end": 735322,
   "overflow_adds": 0,
-  "order_map_grows": 0
+  "recenters": 0,
+  "order_map_grows": 0,
+  "overflow_top": []
 }

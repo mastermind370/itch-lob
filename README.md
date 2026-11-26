@@ -85,7 +85,7 @@ Results (fill in from `results/parse.json`):
 ./build/book_replay data/12302019.slice.itch --latency            # per-message p50..p99.99 -> results/latency_*.json
 ```
 
-- **Flat price ladder** (`lob::FastBook`). Each stock gets a 2048-tick array centered on its first price: ±$10.24 at penny ticks, with $0.0001 ticks below $1. Looking up a price takes one subtraction and one constant division. A 64-bit bitmap per side finds the next best level with `clz`/`ctz` when the best level empties. Prices outside the window, or off the tick grid, go to a `std::map` overflow, so the book is always exact. `overflow_adds` reports how often that happens.
+- **Flat price ladder** (`lob::FastBook`). Each stock gets a 2048-tick array centered on its first price: ±$10.24 at penny ticks, with $0.0001 ticks below $1. Looking up a price takes one subtraction and one constant division. A 64-bit bitmap per side finds the next best level with `clz`/`ctz` when the best level empties. Prices outside the window, or off the tick grid, go to a `std::map` overflow, so the book is always exact. `overflow_adds` reports how often that happens. Pre-market stub quotes can put a stock's first order far from where it actually trades, so the window **recenters on the touch**: after every 256 overflow adds, the book checks whether its best bid or ask has left the window, and if so moves every level into the new window. This is rare and is counted in `recenters`. The `book_replay` output lists the 10 stocks with the most overflow.
 - **Flat order map** (`lob::FlatOrderMap`). Open addressing with linear probing and Fibonacci hashing over one preallocated array of 4M slots (96 MB). Deletion is backward-shift, so there are no tombstones and lookups don't slow down over a day. `order_map_grows` reports any resize.
 - **No heap allocation on the hot path.** Each stock's ladder (~33 KB) is allocated on its first add, once per stock. The only per-message allocations are overflow-map inserts, which are counted.
 - **Shared builder.** `BookBuilder<Book, OrderMap>` is the same code for both books, so the speedup comes from the data structures alone.
@@ -94,7 +94,8 @@ Results (fill in from `results/parse.json`):
 
 | Input | Book | ns/msg | Speedup | p50 | p99 | p99.9 | Machine |
 |---|---|---|---|---|---|---|---|
-| NASDAQ 12302019, 1.5 GB slice | map | 161 | 1.0× | — | — | — | MacBook |
+| NASDAQ 12302019, 1.5 GB slice | map | 167 | 1.0× | 125 ns | 833 ns | 1167 ns | MacBook |
+| NASDAQ 12302019, 1.5 GB slice | fast, before recentering | 69 | 2.40× | 125 ns | 459 ns | 792 ns | MacBook |
 | NASDAQ 12302019, 1.5 GB slice | fast | — | —× | — | — | — | MacBook |
 | Synthetic 20M, 256 stocks | map | 172 | 1.0× | 286 ns | 741 ns | 2376 ns | 2-vCPU x86 cloud VM (sanity check only) |
 | Synthetic 20M, 256 stocks | fast | 80 | 2.1× | 163 ns | 431 ns | 556 ns | 2-vCPU x86 cloud VM (sanity check only) |

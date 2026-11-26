@@ -50,6 +50,19 @@ namespace bench {
 #endif
 }
 
+// Smallest observable step of ticks(), in ns. On Apple Silicon cntfrq_el0 may
+// report 1 GHz while the counter actually advances in ~41.7 ns steps.
+[[nodiscard]] inline double resolution_ns() {
+    std::uint64_t best = ~std::uint64_t{0};
+    for (int i = 0; i < 200; ++i) {
+        const std::uint64_t t = ticks();
+        std::uint64_t u;
+        while ((u = ticks()) == t) {}
+        if (u - t < best) best = u - t;
+    }
+    return static_cast<double>(best) * ns_per_tick();
+}
+
 // Exact counts for values below kLinear ticks, plus a sorted overflow vector.
 // Exact percentiles, no bucketing error.
 class Histogram {

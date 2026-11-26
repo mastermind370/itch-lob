@@ -206,3 +206,50 @@ TEST(Checker, CatchesStaleBestBid) {
     EXPECT_FALSE(chk.ok());
     EXPECT_TRUE(chk.stats().best_mismatches > 0);
 }
+
+// Pre-market: the first order is a $1.00 stub bid on a ~$50 stock. Without
+// recentering, everything near the real touch would live in the overflow map.
+TEST(FastBook, RecentersOnTouchAfterStubAnchor) {
+    MapBook ref;
+    FastBook fast;
+    ref.add(Side::Buy, 10'000, 100);
+    fast.add(Side::Buy, 10'000, 100);
+    SplitMix64 rng(9);
+    struct O { Side s; Price p; std::uint32_t q; };
+    std::vector<O> live;
+    for (int i = 0; i < 200'000; ++i) {
+        if (live.size() < 500 || rng.below(2)) {
+            const Side s = rng.below(2) ? Side::Buy : Side::Sell;
+            const Price off = static_cast<Price>(100 * (1 + rng.below(30)));
+            const Price p = s == Side::Buy ? 500'000 - off : 500'000 + off;
+            ref.add(s, p, 100);
+            fast.add(s, p, 100);
+            live.push_back({s, p, 100});
+        } else {
+            const std::size_t k = rng.below(live.size());
+            ref.reduce(live[k].s, live[k].p, 100, true);
+            fast.reduce(live[k].s, live[k].p, 100, true);
+            live[k] = live.back();
+            live.pop_back();
+        }
+        ASSERT_EQ(fast.best_bid().price, ref.best_bid().price);
+        ASSERT_EQ(fast.best_bid().shares, ref.best_bid().shares);
+        ASSERT_EQ(fast.best_ask().price, ref.best_ask().price);
+        ASSERT_EQ(fast.best_ask().shares, ref.best_ask().shares);
+    }
+    EXPECT_EQ(fast.recenters(), 1u);
+    EXPECT_TRUE(fast.overflow_adds() <= FastBook::kRecenterAfter);  // only until the first recenter...
+    EXPECT_EQ(fast.level(Side::Buy, 10'000).shares, 100u);                // ...and the stub is kept in overflow
+    EXPECT_EQ(fast.level_count(Side::Buy), ref.level_count(Side::Buy));
+    EXPECT_TRUE(fast.window_low() <= 500'000 && 500'000 <= fast.window_high());
+}
+
+// Deep orders far from a touch that is inside the window must not cause recentering.
+TEST(FastBook, NoRecenterWhenTouchIsInWindow) {
+    FastBook b;
+    b.add(Side::Buy, 500'000, 100);
+    b.add(Side::Sell, 500'100, 100);
+    for (int i = 0; i < 5'000; ++i) b.add(Side::Sell, 9'000'000 + 100 * static_cast<Price>(i % 50), 1);
+    EXPECT_EQ(b.recenters(), 0u);
+    EXPECT_EQ(b.best_ask().price, 500'100u);
+}
