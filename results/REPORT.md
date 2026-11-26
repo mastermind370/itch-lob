@@ -78,22 +78,20 @@ Parser thread → SPSC ring (4096 × 40 B) → book thread; 5 interleaved runs, 
 
 | Variant | M msgs/s (median) | Range | vs inline |
 |---|---|---|---|
-| inline (1 thread, no queue) | 17.11 | 16.56 – 17.85 | 1.00× |
-| pipeline: padded + cached + batched head | 13.70 | 13.08 – 14.07 | 0.80× |
-| − head batching | 11.36 | 10.82 – 11.77 | 0.66× |
-| − cache-line padding | 9.11 | 8.55 – 9.37 | 0.53× |
-| − index caching (naive) | 10.52 | 9.59 – 10.69 | 0.61× |
+| inline (1 thread, no queue) | 18.22 | 16.91 – 18.63 | 1.00× |
+| pipeline: padded + cached + batched head | 14.75 | 13.90 – 15.36 | 0.81× |
+| − head batching | 12.41 | 11.81 – 13.02 | 0.68× |
+| − cache-line padding | 10.00 | 9.66 – 10.25 | 0.55× |
+| − index caching (naive) | 11.07 | 10.54 – 11.22 | 0.61× |
 
-End-to-end latency at 4.0M msgs/s, paced (producer late for 4.22% of sends):
+End-to-end latency at 2.0M msgs/s, paced (producer late for 0.49% of sends):
 
 | Path | p50 | p90 | p99 | p99.9 | p99.99 |
 |---|---|---|---|---|---|
-| inline, no queue | 125 | 208 | 417 | 958 | 5,584 |
-| through the queue | 208 | 958 | 1051782 | 2,277,176 | 5,086,560 |
+| inline, no queue | 125 | 167 | 334 | 708 | 1,416 |
+| through the queue | 209 | 333 | 3000 | 289,951 | 1,357,374 |
 
-During the paced run: 28,189 involuntary and 0 voluntary context switches. Each involuntary switch stalls a spinning thread for microseconds and shows up directly in the p99.9+ tail. macOS has no hard core pinning, so these can't be eliminated there.
-
-**Warning:** the producer fell behind the paced rate, so these latencies include queueing. Rerun `pipeline_bench` with a lower `--rate`.
+During the paced run: 14,671 involuntary and 0 voluntary context switches. Each involuntary switch stalls a spinning thread for microseconds and shows up directly in the p99.9+ tail. macOS has no hard core pinning, so these can't be eliminated there.
 
 ![Pipeline ablation](plots/ablation_pipeline.svg)
 
