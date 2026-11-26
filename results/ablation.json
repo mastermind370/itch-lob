@@ -1,0 +1,13 @@
+{
+  "stage": 6,
+  "messages": 48058456,
+  "reps": 5,
+  "books_identical": true,
+  "variants": [
+    {"key": "baseline", "label": "baseline: std::map book + std::unordered_map orders", "ns_per_msg": {"median": 206.7033, "min": 169.6791, "max": 209.0530, "n": 5}, "speedup_vs_baseline": 1, "prev": null, "overflow_adds": 0, "recenters": 0, "counters": {"hw": false, "minor_faults": 2180, "major_faults": 0, "voluntary_cs": 0, "involuntary_cs": 4450}},
+    {"key": "flat_orders", "label": "+ flat open-addressing order map", "ns_per_msg": {"median": 113.4850, "min": 96.7802, "max": 117.6071, "n": 5}, "speedup_vs_baseline": 1.82141, "prev": "baseline", "overflow_adds": 0, "recenters": 0, "counters": {"hw": false, "minor_faults": 0, "major_faults": 0, "voluntary_cs": 0, "involuntary_cs": 1203}},
+    {"key": "ladder_only", "label": "flat ladder (recentering) + std::unordered_map", "ns_per_msg": {"median": 134.1412, "min": 116.4643, "max": 145.1533, "n": 5}, "speedup_vs_baseline": 1.54094, "prev": "baseline", "overflow_adds": 2183479, "recenters": 3062, "counters": {"hw": false, "minor_faults": 2857, "major_faults": 0, "voluntary_cs": 0, "involuntary_cs": 1293}},
+    {"key": "flat_ladder", "label": "+ flat price ladder (no recentering)", "ns_per_msg": {"median": 80.0868, "min": 72.0989, "max": 82.9460, "n": 5}, "speedup_vs_baseline": 2.58099, "prev": "flat_orders", "overflow_adds": 9321606, "recenters": 0, "counters": {"hw": false, "minor_faults": 216, "major_faults": 0, "voluntary_cs": 0, "involuntary_cs": 933}},
+    {"key": "recenter", "label": "+ recenter window on the touch (final)", "ns_per_msg": {"median": 58.4740, "min": 56.0227, "max": 63.7985, "n": 5}, "speedup_vs_baseline": 3.53496, "prev": "flat_ladder", "overflow_adds": 2183479, "recenters": 3062, "counters": {"hw": false, "minor_faults": 1, "major_faults": 0, "voluntary_cs": 0, "involuntary_cs": 485}}
+  ]
+}

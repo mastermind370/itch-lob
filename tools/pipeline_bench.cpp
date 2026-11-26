@@ -20,7 +20,9 @@
 #include <string>
 #include <vector>
 
+#include "bench/counters.hpp"
 #include "bench/latency.hpp"
+#include "bench/stats.hpp"
 #include "itch/mapped_file.hpp"
 #include "pipeline/pipeline.hpp"
 
@@ -57,16 +59,28 @@ std::string pct_json(const Pct& p) {
     return buf;
 }
 
-template <class F>
-RunStats best_of(int reps, F&& f) {
-    RunStats best;
-    best.seconds = 1e30;
-    for (int r = 0; r < reps; ++r) {
-        RunStats s = f();
-        if (s.seconds < best.seconds) best = s;
+std::string hist_json(bench::Histogram& h) {
+    std::string s = "[";
+    bool first = true;
+    for (const auto& [v, c] : h.nonzero()) {
+        s += (first ? "[" : ",[") + std::to_string(v) + "," + std::to_string(c) + "]";
+        first = false;
     }
-    return best;
+    return s + "]";
 }
+
+// One variant's repeated runs.
+struct Series {
+    const char* key;
+    const char* label;
+    RunStats (*run)(const std::uint8_t*, std::size_t);
+    std::vector<double> mps;  // M msgs/s per rep
+    RunStats last;
+};
+
+template <class Q>
+RunStats run_sat(const std::uint8_t* d, std::size_t n) { return run_pipeline<Q>(d, n); }
+RunStats run_in(const std::uint8_t* d, std::size_t n) { return run_inline(d, n); }
 
 }  // namespace
 
@@ -90,39 +104,47 @@ int main(int argc, char** argv) {
     auto u = [](std::uint64_t v) { return static_cast<unsigned long long>(v); };
     bool all_match = true;
 
-    // 1. Inline.
-    const RunStats in = best_of(reps, [&] { return run_inline(d, n); });
-    const double msgs = static_cast<double>(in.messages);
-    std::printf("== throughput, best of %d (%llu ITCH messages)\n", reps, u(in.messages));
-    std::printf("   %-34s %7.2f M msgs/s  %6.1f ns/msg\n", "inline (1 thread, no queue)", msgs / in.seconds / 1e6,
-                in.seconds * 1e9 / msgs);
-
-    // 2. Saturated pipelines.
-    auto report = [&](const char* name, const RunStats& s) {
-        const bool ok = s.digest == in.digest;
-        all_match &= ok;
-        std::printf("   %-34s %7.2f M msgs/s  %6.1f ns/msg  %.2fx vs inline  books %s  (producer full-spins %llu, consumer empty-spins %llu)\n",
-                    name, msgs / s.seconds / 1e6, s.seconds * 1e9 / msgs, in.seconds / s.seconds, ok ? "match" : "DIFFER",
-                    u(s.full_spins), u(s.empty_spins));
+    // 1-2. Throughput: every variant, interleaved round-robin, `reps` times.
+    Series ser[] = {
+        {"inline", "inline (1 thread, no queue)", run_in, {}, {}},
+        {"pipeline", "pipeline: padded+cached+batched", run_sat<Full>, {}, {}},
+        {"no_head_batch", "  - without head batching", run_sat<NoBatch>, {}, {}},
+        {"no_padding", "  - without padding either", run_sat<Unpadded>, {}, {}},
+        {"naive", "  - without index caching (naive)", run_sat<Naive>, {}, {}},
     };
-    const RunStats sp = best_of(reps, [&] { return run_pipeline<Full>(d, n); });
-    report("pipeline: padded+cached+batched", sp);
-    const RunStats sb = best_of(reps, [&] { return run_pipeline<NoBatch>(d, n); });
-    report("  - without head batching", sb);
-    const RunStats su = best_of(reps, [&] { return run_pipeline<Unpadded>(d, n); });
-    report("  - without padding either", su);
-    const RunStats suu = best_of(reps, [&] { return run_pipeline<Naive>(d, n); });
-    report("  - without index caching (naive)", suu);
-    std::printf("   thread placement: %s\n\n", sp.placement);
+    constexpr int kS = sizeof ser / sizeof ser[0];
+    std::uint64_t ref_digest = 0;
+    double msgs = 0;
+    for (int r = 0; r < reps; ++r) {
+        for (auto& x : ser) {
+            x.last = x.run(d, n);
+            msgs = static_cast<double>(x.last.messages);
+            x.mps.push_back(msgs / x.last.seconds / 1e6);
+            if (!ref_digest) ref_digest = x.last.digest;
+            all_match &= x.last.digest == ref_digest;
+        }
+    }
+    std::printf("== throughput: %d reps interleaved, median [min .. max] (%llu ITCH messages)\n", reps, u(ser[0].last.messages));
+    bench::Spread sp[kS];
+    for (int i = 0; i < kS; ++i) {
+        sp[i] = bench::spread(ser[i].mps);
+        std::printf("   %-34s %7.2f M msgs/s [%5.2f .. %5.2f]  %6.1f ns/msg  %.2fx vs inline\n", ser[i].label, sp[i].median,
+                    sp[i].min, sp[i].max, 1e3 / sp[i].median, sp[i].median / sp[0].median);
+    }
+    std::printf("   books identical in every run: %s; thread placement: %s\n\n", all_match ? "yes" : "NO", ser[1].last.placement);
+    const RunStats in = ser[0].last;
 
     // 3. Latency.
     const double npt = bench::ns_per_tick(), res = bench::resolution_ns();
     bench::Histogram hi, hp;
     const RunStats li = run_inline(d, n, &hi);
     all_match &= li.digest == in.digest;
-    if (rate_m <= 0) rate_m = 0.5 * msgs / sp.seconds / 1e6;
+    if (rate_m <= 0) rate_m = 0.5 * sp[1].median;
     const std::uint64_t interval = static_cast<std::uint64_t>(1e3 / rate_m / npt);  // ticks per message
+    bench::Counters ctr;
+    ctr.start();
     const RunStats lp = run_pipeline<Full>(d, n, interval, &hp);
+    const bench::CounterSample cs = ctr.stop();
     all_match &= lp.digest == in.digest;
     const Pct pi = pct(hi, npt), pp = pct(hp, npt);
     std::printf("== latency per order message (clock resolution %.1f ns)\n", res);
@@ -135,21 +157,23 @@ int main(int argc, char** argv) {
     const double late_frac = static_cast<double>(lp.paced_late) / static_cast<double>(lp.messages);
     std::printf("   paced run: %.2f s, producer late for %.2f%% of sends%s\n\n", lp.seconds, 100 * late_frac,
                 late_frac > 0.01 ? "  ** the pipeline fell behind this rate: these numbers include queueing; rerun with a lower --rate **" : "");
+    std::printf("   during the paced run: %ld involuntary + %ld voluntary context switches, %ld page faults\n\n",
+                cs.involuntary_cs, cs.voluntary_cs, cs.minor_faults + cs.major_faults);
 
     std::printf("%s\n", all_match ? "ALL RUNS BUILT IDENTICAL BOOKS" : "BOOK MISMATCH BETWEEN RUNS");
 
     std::ofstream js("results/pipeline.json");
     js << "{\n  \"stage\": 5,\n  \"messages\": " << in.messages << ",\n  \"queue_slots\": " << kSlots
-       << ",\n  \"event_bytes\": " << sizeof(Event) << ",\n  \"placement\": \"" << sp.placement << "\""
-       << ",\n  \"inline_mmsgs_per_s\": " << msgs / in.seconds / 1e6 << ",\n  \"inline_ns_per_msg\": " << in.seconds * 1e9 / msgs
-       << ",\n  \"pipeline_mmsgs_per_s\": " << msgs / sp.seconds / 1e6
-       << ",\n  \"pipeline_no_head_batch_mmsgs_per_s\": " << msgs / sb.seconds / 1e6
-       << ",\n  \"pipeline_no_padding_mmsgs_per_s\": " << msgs / su.seconds / 1e6
-       << ",\n  \"pipeline_naive_mmsgs_per_s\": " << msgs / suu.seconds / 1e6
-       << ",\n  \"pipeline_padded_full_spins\": " << sp.full_spins << ",\n  \"pipeline_padded_empty_spins\": " << sp.empty_spins
+       << ",\n  \"event_bytes\": " << sizeof(Event) << ",\n  \"placement\": \"" << ser[1].last.placement << "\""
+       << ",\n  \"throughput_mmsgs_per_s\": {";
+    for (int i = 0; i < kS; ++i) js << (i ? ", " : "") << "\"" << ser[i].key << "\": " << sp[i].json();
+    js << "}"
+       << ",\n  \"pipeline_full_spins\": " << ser[1].last.full_spins << ",\n  \"pipeline_empty_spins\": " << ser[1].last.empty_spins
        << ",\n  \"latency_resolution_ns\": " << res << ",\n  \"paced_rate_mmsgs_per_s\": " << rate_m
        << ",\n  \"paced_late_fraction\": " << late_frac << ",\n  \"latency_inline\": " << pct_json(pi)
-       << ",\n  \"latency_pipeline\": " << pct_json(pp) << ",\n  \"books_match\": " << (all_match ? "true" : "false")
+       << ",\n  \"latency_pipeline\": " << pct_json(pp) << ",\n  \"paced_counters\": " << cs.json(0)
+       << ",\n  \"ns_per_tick\": " << npt << ",\n  \"hist_inline_ticks\": " << hist_json(hi)
+       << ",\n  \"hist_pipeline_ticks\": " << hist_json(hp) << ",\n  \"books_match\": " << (all_match ? "true" : "false")
        << "\n}\n";
     std::printf("wrote results/pipeline.json\n");
     return all_match ? 0 : 1;

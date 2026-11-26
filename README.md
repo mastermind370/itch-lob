@@ -2,7 +2,7 @@
 
 A low-latency order book and matching engine in C++20, built by replaying real NASDAQ TotalView-ITCH 5.0 market data.
 
-> Work in progress. Stages 1–5 of 7 are done: the parser, the baseline and fast books, the matching engine and the lock-free pipeline.
+> Work in progress. Stages 1–6 of 7 are done. The full benchmark report is in [`results/REPORT.md`](results/REPORT.md).
 
 ## Status
 
@@ -13,7 +13,7 @@ A low-latency order book and matching engine in C++20, built by replaying real N
 | 3 | Fast order book (flat price ladder, preallocated order map) + latency percentiles | ✅ |
 | 4 | Price-time matching engine + randomized differential test | ✅ |
 | 5 | Lock-free SPSC pipeline (parser thread → book thread) | ✅ |
-| 6 | Benchmark report: latency histograms, ablation table | — |
+| 6 | Benchmark report: latency histograms, ablation table, counters | ✅ |
 | 7 | Architecture diagram, final results | — |
 
 ## Build
@@ -139,10 +139,25 @@ The parser thread decodes each frame and pushes a 40-byte `Event` for every orde
 
 | Machine | Inline | Pipeline | No head batching | No padding | Naive | Latency, inline p50 / p99 | Latency, pipeline p50 / p99 |
 |---|---|---|---|---|---|---|---|
-| MacBook | — | — | — | — | — | — | — |
+| MacBook, Apple clang 17 | 19.0M msgs/s | 14.5M | 10.6M | 9.8M | 9.8M | 125 / 334 ns | 208 / 792 ns at 4M msgs/s (p99.9 41 µs‡) |
 | 2-vCPU x86 KVM VM (sanity check only) | 12.4M msgs/s | 8.2M | 7.1M | 5.2M | 5.2M | 168 / 449 ns | 594 / 239,000 ns at 1M msgs/s** |
 
 \*\* On this VM the two-thread runs are slower than one thread, and the tail is dominated by hypervisor preemption: the producer itself misses about 4% of its send times even at 1M msgs/s. The padding and batching ablation still shows the expected ordering.
+
+‡ The Mac's paced run had the producer late for 0.06% of sends, so the latency is clean, and the queue adds 83 ns at p50. The p99.9 tail comes from the OS scheduler, which on macOS can't be stopped from preempting a spinning thread. Stage 6's counters count these preemptions.
+
+## Stage 6: benchmark report
+
+```bash
+scripts/run_all.sh                      # every test, check and benchmark (10-15 min), then the report
+python3 scripts/report.py               # rebuild results/REPORT.md + results/plots/*.svg from existing JSON
+```
+
+- **`ablation`** adds one book optimization at a time: `std::map` baseline → flat order map → flat price ladder → recentering, plus the ladder alone. Every variant is the same `BookBuilder<Book, OrderMap>` code. Runs are **interleaved** round-robin, so drift in clock speed or temperature hits every variant equally. It reports the median, min–max range and speedup vs the baseline and vs the previous step, and checks that every variant builds identical final books.
+- **Counters** (`bench/counters.hpp`). On Linux, `perf_event_open` gives IPC, branch misses, L1d and LLC misses per message. Everywhere, `getrusage` gives page faults and voluntary/involuntary context switches. macOS doesn't expose hardware counters without Instruments or root, but context switches are what explain its latency tail.
+- **Repeated runs everywhere.** `pipeline_bench` interleaves all five queue variants and reports median [min..max]. `engine_bench` reports the spread and a pool-capacity sweep showing the id map falling out of cache.
+- **Latency histograms.** Every latency run saves its full histogram, and `report.py` draws HdrHistogram-style percentile plots (log latency vs p50…p99.999). It uses only the standard library and writes plain SVG with hover tooltips.
+- **`results/REPORT.md`** has correctness checks, the ablation table, latency tables and plots for the book, engine and pipeline, and the headline numbers for the resume bullet.
 
 ## Layout
 
@@ -151,9 +166,9 @@ include/itch/   endian.hpp  messages.hpp  parser.hpp  encoder.hpp  synthetic.hpp
 include/lob/    map_book.hpp  fast_book.hpp  order_map.hpp  book_builder.hpp  checker.hpp
 include/engine/ types.hpp  ref_engine.hpp  fast_engine.hpp  order_flow.hpp  diff.hpp
 include/pipeline/ spsc_queue.hpp  pipeline.hpp  cpu.hpp
-include/bench/  latency.hpp
-tools/          itch_stats  itch_slice  gen_synthetic  book_replay  engine_bench  pipeline_bench
+include/bench/  latency.hpp  counters.hpp  stats.hpp
+tools/          itch_stats  itch_slice  gen_synthetic  book_replay  engine_bench  pipeline_bench  ablation
 tests/          GoogleTest unit tests
-scripts/        fetch_sample.sh
+scripts/        fetch_sample.sh  run_all.sh  report.py
 results/        JSON written by the tools; README tables are filled from these
 ```

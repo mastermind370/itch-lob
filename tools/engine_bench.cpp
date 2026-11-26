@@ -17,6 +17,8 @@
 #include <vector>
 
 #include "bench/latency.hpp"
+#include "bench/stats.hpp"
+#include <string>
 #include "engine/diff.hpp"
 #include "engine/fast_engine.hpp"
 #include "engine/order_flow.hpp"
@@ -27,25 +29,26 @@ using namespace engine;
 namespace {
 
 struct Run {
-    double seconds = 0;
+    double seconds = 0;  // median over reps
+    bench::Spread ns_per_order;
     std::uint64_t fills = 0, shares = 0;
 };
 
 template <class E>
-Run run(const std::vector<Op>& ops, int reps) {
-    std::vector<double> t;
+Run run(const std::vector<Op>& ops, int reps, std::uint32_t capacity = 1u << 16) {
+    std::vector<double> ns;
     Run out;
     for (int r = 0; r < reps; ++r) {
-        auto e = std::make_unique<E>();
+        auto e = std::make_unique<E>(1u << 16, capacity);
         CountingSink sink;
         const auto t0 = std::chrono::steady_clock::now();
         for (const Op& op : ops) apply(*e, op, sink);
-        t.push_back(std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
+        ns.push_back(std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - t0).count() / ops.size());
         out.fills = sink.fills;
         out.shares = sink.shares;
     }
-    std::sort(t.begin(), t.end());
-    out.seconds = t.front();
+    out.ns_per_order = bench::spread(ns);
+    out.seconds = out.ns_per_order.median * 1e-9 * ops.size();
     return out;
 }
 
@@ -93,7 +96,7 @@ int main(int argc, char** argv) {
     const std::vector<Op> ops = flow.take(n);
     std::uint64_t limits = 0, markets = 0, cancels = 0;
     for (const Op& op : ops) (op.kind == Op::Limit ? limits : op.kind == Op::Market ? markets : cancels)++;
-    std::printf("== throughput: %llu orders (%llu limit, %llu market, %llu cancel), best of %d\n", u(n), u(limits),
+    std::printf("== throughput: %llu orders (%llu limit, %llu market, %llu cancel), median of %d\n", u(n), u(limits),
                 u(markets), u(cancels), reps);
     const Run rf = run<FastEngine>(ops, reps);
     const Run rr = run<RefEngine>(ops, reps);
@@ -102,8 +105,22 @@ int main(int argc, char** argv) {
                 rf.fills / rf.seconds / 1e6);
     std::printf("   ref   %7.2f M orders/s  %6.1f ns/order  %6.2f M fills/s\n", ref_ops / 1e6, rr.seconds * 1e9 / n,
                 rr.fills / rr.seconds / 1e6);
-    std::printf("   speedup %.2fx; %llu fills, %llu shares matched (identical in both: %s)\n\n", rr.seconds / rf.seconds,
-                u(rf.fills), u(rf.shares), rf.fills == rr.fills && rf.shares == rr.shares ? "yes" : "NO");
+    std::printf("   speedup %.2fx; %llu fills, %llu shares matched (identical in both: %s); fast range %.1f .. %.1f ns\n\n",
+                rr.seconds / rf.seconds, u(rf.fills), u(rf.shares), rf.fills == rr.fills && rf.shares == rr.shares ? "yes" : "NO",
+                rf.ns_per_order.min, rf.ns_per_order.max);
+
+    // 2b. Capacity sweep: the id map is 2x capacity; bigger than cache costs per order.
+    std::printf("== fast engine vs pool capacity (id map = 2x capacity x 16 B)\n");
+    const std::uint32_t caps[] = {1u << 14, 1u << 16, 1u << 18, 1u << 20};
+    std::string cap_json = "[";
+    for (std::uint32_t cap : caps) {
+        const Run rc = run<FastEngine>(ops, reps, cap);
+        std::printf("   capacity %8u  id map %6.1f MB  %6.1f ns/order\n", cap, cap * 2.0 * 16 / 1e6, rc.ns_per_order.median);
+        cap_json += std::string(cap_json.size() > 1 ? "," : "") + "{\"capacity\": " + std::to_string(cap) +
+                    ", \"ns_per_order\": " + rc.ns_per_order.json() + "}";
+    }
+    cap_json += "]";
+    std::printf("\n");
 
     // 3. Latency.
     bench::Histogram h;
@@ -135,7 +152,16 @@ int main(int argc, char** argv) {
        << ",\n  \"latency_resolution_ns\": " << res << ",\n  \"latency_mean_ns\": " << h.mean() * npt
        << ",\n  \"latency_p50_ns\": " << p50 << ",\n  \"latency_p90_ns\": " << p90 << ",\n  \"latency_p99_ns\": " << p99
        << ",\n  \"latency_p99_9_ns\": " << p999 << ",\n  \"latency_p99_99_ns\": " << p9999 << ",\n  \"latency_max_ns\": " << mx
-       << "\n}\n";
+       << ",\n  \"fast_ns_per_order_spread\": " << rf.ns_per_order.json() << ",\n  \"ref_ns_per_order_spread\": " << rr.ns_per_order.json()
+       << ",\n  \"capacity_sweep\": " << cap_json << ",\n  \"ns_per_tick\": " << npt << ",\n  \"hist_ticks\": [";
+    {
+        bool first = true;
+        for (const auto& [v, c] : h.nonzero()) {
+            js << (first ? "" : ",") << "[" << v << "," << c << "]";
+            first = false;
+        }
+    }
+    js << "]\n}\n";
     std::printf("\nwrote results/engine.json\n");
     return passed == diff_seeds ? 0 : 1;
 }

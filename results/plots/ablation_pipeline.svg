@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 266" width="820" height="266" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="16.0" y="24.0" font-size="16" fill="#191919" text-anchor="start" font-weight="600">Pipeline throughput by queue optimization</text>
+<text x="16.0" y="42.0" font-size="12" fill="#666666" text-anchor="start" font-weight="normal">ITCH messages per second, end to end (longer is better; whisker = min..max over runs)</text>
+<line x1="360.0" y1="50.0" x2="360.0" y2="226.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="360.0" y="242.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">0</text>
+<line x1="456.0" y1="50.0" x2="456.0" y2="226.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="456.0" y="242.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">5</text>
+<line x1="551.9" y1="50.0" x2="551.9" y2="226.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="551.9" y="242.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">10</text>
+<line x1="647.9" y1="50.0" x2="647.9" y2="226.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="647.9" y="242.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">15</text>
+<text x="545.0" y="260.0" font-size="11" fill="#666666" text-anchor="middle" font-weight="normal">M msgs/s</text>
+<text x="350.0" y="77.0" font-size="12" fill="#191919" text-anchor="end" font-weight="normal">inline (1 thread, no queue)</text>
+<path d="M360,63 h324.4 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-324.4 z" fill="#257de0"><title>inline (1 thread, no queue): 17.11 M msgs/s (range 16.56 .. 17.85)</title></path>
+<line x1="677.8" y1="73.0" x2="702.6" y2="73.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="677.8" y1="68.0" x2="677.8" y2="78.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="702.6" y1="68.0" x2="702.6" y2="78.0" stroke="#191919" stroke-width="1.5"/>
+<text x="710.6" y="77.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">17.1</text>
+<text x="350.0" y="111.0" font-size="12" fill="#191919" text-anchor="end" font-weight="normal">pipeline: padded + cached + batched head</text>
+<path d="M360,97 h258.9 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-258.9 z" fill="#257de0"><title>pipeline: padded + cached + batched head: 13.70 M msgs/s (range 13.08 .. 14.07)</title></path>
+<line x1="611.1" y1="107.0" x2="630.0" y2="107.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="611.1" y1="102.0" x2="611.1" y2="112.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="630.0" y1="102.0" x2="630.0" y2="112.0" stroke="#191919" stroke-width="1.5"/>
+<text x="638.0" y="111.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">13.7</text>
+<text x="350.0" y="145.0" font-size="12" fill="#191919" text-anchor="end" font-weight="normal">− head batching</text>
+<path d="M360,131 h214.0 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-214.0 z" fill="#257de0"><title>− head batching: 11.36 M msgs/s (range 10.82 .. 11.77)</title></path>
+<line x1="567.6" y1="141.0" x2="585.9" y2="141.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="567.6" y1="136.0" x2="567.6" y2="146.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="585.9" y1="136.0" x2="585.9" y2="146.0" stroke="#191919" stroke-width="1.5"/>
+<text x="593.9" y="145.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">11.4</text>
+<text x="350.0" y="179.0" font-size="12" fill="#191919" text-anchor="end" font-weight="normal">− cache-line padding</text>
+<path d="M360,165 h170.9 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-170.9 z" fill="#257de0"><title>− cache-line padding: 9.11 M msgs/s (range 8.55 .. 9.37)</title></path>
+<line x1="524.1" y1="175.0" x2="539.8" y2="175.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="524.1" y1="170.0" x2="524.1" y2="180.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="539.8" y1="170.0" x2="539.8" y2="180.0" stroke="#191919" stroke-width="1.5"/>
+<text x="547.8" y="179.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">9.1</text>
+<text x="350.0" y="213.0" font-size="12" fill="#191919" text-anchor="end" font-weight="normal">− index caching (naive)</text>
+<path d="M360,199 h197.9 a4,4 0 0 1 4,4 v12 a4,4 0 0 1 -4,4 h-197.9 z" fill="#257de0"><title>− index caching (naive): 10.52 M msgs/s (range 9.59 .. 10.69)</title></path>
+<line x1="544.1" y1="209.0" x2="565.3" y2="209.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="544.1" y1="204.0" x2="544.1" y2="214.0" stroke="#191919" stroke-width="1.5"/>
+<line x1="565.3" y1="204.0" x2="565.3" y2="214.0" stroke="#191919" stroke-width="1.5"/>
+<text x="573.3" y="213.0" font-size="12" fill="#191919" text-anchor="start" font-weight="normal">10.5</text>
+</svg>

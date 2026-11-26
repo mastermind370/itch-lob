@@ -31,7 +31,9 @@
 
 namespace lob {
 
-class FastBook {
+// Recenter = false disables window recentering; it exists for the ablation.
+template <bool Recenter = true>
+class FastBookT {
 public:
     static constexpr int kWindow = 2048;  // ticks: +/- $10.24 around the center for a >$1 stock
     static constexpr std::uint32_t kRecenterAfter = 256;  // overflow adds between touch checks
@@ -48,7 +50,9 @@ public:
         Level& l = s == Side::Buy ? obids_[p] : oasks_[p];
         l.shares += q;
         ++l.orders;
-        if (++misses_ >= kRecenterAfter) [[unlikely]] maybe_recenter();
+        if constexpr (Recenter) {
+            if (++misses_ >= kRecenterAfter) [[unlikely]] maybe_recenter();
+        }
     }
 
     void reduce(Side s, Price p, std::uint32_t q, bool order_gone) {
@@ -265,5 +269,7 @@ private:
     std::uint64_t recenters_ = 0;
     std::uint32_t misses_ = 0;
 };
+
+using FastBook = FastBookT<true>;
 
 }  // namespace lob

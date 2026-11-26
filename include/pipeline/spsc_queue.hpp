@@ -30,7 +30,9 @@ namespace pipeline {
 // pairs of 64-byte lines, so 128 is the safe padding on both.
 inline constexpr std::size_t kCacheLine = 128;
 
-template <class T, std::size_t N, bool Padded = true, bool CacheIndices = true, std::size_t HeadBatch = 32>
+// Default batch: 32, or N/2 for tiny rings.
+template <class T, std::size_t N, bool Padded = true, bool CacheIndices = true,
+          std::size_t HeadBatch = (N / 2 < 32 ? N / 2 : 32)>
 class SpscQueue {
     static_assert(N >= 2 && (N & (N - 1)) == 0, "capacity must be a power of two");
     static_assert(std::is_trivially_copyable_v<T>);

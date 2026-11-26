@@ -31,7 +31,7 @@ if(ITCH_NATIVE)
   endif()
 endif()
 
-foreach(tool itch_stats itch_slice gen_synthetic book_replay engine_bench pipeline_bench)
+foreach(tool itch_stats itch_slice gen_synthetic book_replay engine_bench pipeline_bench ablation)
   add_executable(${tool} tools/${tool}.cpp)
   target_link_libraries(${tool} PRIVATE itch)
 endforeach()
