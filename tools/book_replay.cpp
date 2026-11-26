@@ -247,7 +247,8 @@ void run_latency(const itch::MappedFile& file) {
     std::printf(" | max %.1f ns\n", static_cast<double>(h.max()) * npt);
 
     std::ofstream js(std::string("results/latency_") + V::name + ".json");
-    js << "{\n  \"book\": \"" << V::name << "\",\n  \"messages\": " << h.count() << ",\n  \"ns_per_tick\": " << npt << ",\n  \"resolution_ns\": " << res
+    js << "{\n  \"book\": \"" << V::name << "\",\n  \"ladder_window\": " << lob::FastBook::kWindow
+       << ",\n  \"messages\": " << h.count() << ",\n  \"ns_per_tick\": " << npt << ",\n  \"resolution_ns\": " << res
        << ",\n  \"timer_overhead_p50_ns\": " << over.percentile(50) * npt << ",\n  \"mean_ns\": " << h.mean() * npt;
     for (int i = 0; i < 5; ++i) js << ",\n  \"" << names[i] << "_ns\": " << vals[i];
     js << ",\n  \"max_ns\": " << static_cast<double>(h.max()) * npt << ",\n  \"histogram_ticks\": [";

@@ -12,12 +12,14 @@ endif()
 
 option(ITCH_NATIVE "Tune for the build machine's CPU" ON)
 option(ITCH_BUILD_TESTS "Build unit tests (fetches GoogleTest if not installed)" ON)
+set(ITCH_LADDER_WINDOW 2048 CACHE STRING "Fast-book price window in ticks (multiple of 64); see results/REPORT.md")
 
 find_package(Threads REQUIRED)
 
 add_library(itch INTERFACE)
 target_include_directories(itch INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(itch INTERFACE Threads::Threads)
+target_compile_definitions(itch INTERFACE ITCH_LADDER_WINDOW=${ITCH_LADDER_WINDOW})
 target_compile_options(itch INTERFACE -Wall -Wextra -Wpedantic $<$<CONFIG:Release>:-O3>)
 
 if(ITCH_NATIVE)

@@ -17,25 +17,40 @@
 // is moved between ladder and overflow as needed. This is O(levels), rare, and
 // counted in recenters().
 //
-// The ladder (~33 KB) is allocated on a stock's first add, once per stock,
-// never per message.
+// The window size is a template parameter (default ITCH_LADDER_WINDOW ticks,
+// set from CMake). Each stock's ladder is mmap'd on its first add: the OS hands
+// out zero pages lazily, so a wide window only costs memory where orders
+// actually rest. A two-level bitmap (64-bit words + one summary bit per word)
+// keeps finding the next best level cheap even in a 32K-tick window, and
+// recentering clears only the levels in use, not the whole window.
 #pragma once
+
+#include <sys/mman.h>
+#include <unistd.h>
 
 #include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
+#include <new>
 #include <vector>
 
 #include "lob/map_book.hpp"
 
+#ifndef ITCH_LADDER_WINDOW
+#define ITCH_LADDER_WINDOW 2048
+#endif
+
 namespace lob {
 
-// Recenter = false disables window recentering; it exists for the ablation.
-template <bool Recenter = true>
+// Recenter = false disables window recentering; Window sets the ladder size in
+// ticks. Both exist for the ablation.
+template <bool Recenter = true, int Window = ITCH_LADDER_WINDOW>
 class FastBookT {
+    static_assert(Window >= 64 && Window % 64 == 0 && Window <= (1 << 20), "window must be a multiple of 64 ticks");
+
 public:
-    static constexpr int kWindow = 2048;  // ticks: +/- $10.24 around the center for a >$1 stock
+    static constexpr int kWindow = Window;  // 2048 ticks = +/- $10.24 around the center for a >$1 stock
     static constexpr std::uint32_t kRecenterAfter = 256;  // overflow adds between touch checks
 
     void add(Side s, Price p, std::uint32_t q) {
@@ -104,11 +119,7 @@ public:
     void for_each_level(Side s, F&& f) const {
         if (lad_) {
             const SideLadder& sl = s == Side::Buy ? lad_->bid : lad_->ask;
-            for (int w = 0; w < kWords; ++w)
-                for (std::uint64_t bits = sl.bits[w]; bits; bits &= bits - 1) {
-                    const int i = w * 64 + __builtin_ctzll(bits);
-                    f(price_at(i), Level{sl.lv[i].shares, sl.lv[i].orders});
-                }
+            sl.for_each_set([&](int i) { f(price_at(i), Level{sl.lv[i].shares, sl.lv[i].orders}); });
         }
         if (s == Side::Buy) for (const auto& [p, l] : obids_) f(p, l);
         else for (const auto& [p, l] : oasks_) f(p, l);
@@ -118,9 +129,28 @@ public:
     [[nodiscard]] std::uint64_t recenters() const { return recenters_; }
     [[nodiscard]] Price window_low() const { return lad_ ? base_ : 0; }
     [[nodiscard]] Price window_high() const { return lad_ ? price_at(kWindow - 1) : 0; }
+    [[nodiscard]] static constexpr std::size_t ladder_bytes() { return sizeof(Ladder); }
+    [[nodiscard]] bool has_ladder() const { return static_cast<bool>(lad_); }
+
+    // Bytes of this stock's ladder that are actually resident in RAM (mincore).
+    [[nodiscard]] std::size_t ladder_resident_bytes() const {
+        if (!lad_) return 0;
+        const std::size_t page = static_cast<std::size_t>(::sysconf(_SC_PAGESIZE));
+        const std::size_t pages = (sizeof(Ladder) + page - 1) / page;
+        std::vector<unsigned char> v(pages);
+#if defined(__APPLE__)
+        if (::mincore(lad_.get(), sizeof(Ladder), reinterpret_cast<char*>(v.data())) != 0) return 0;
+#else
+        if (::mincore(lad_.get(), sizeof(Ladder), v.data()) != 0) return 0;
+#endif
+        std::size_t n = 0;
+        for (unsigned char c : v) n += c & 1;
+        return n * page;
+    }
 
 private:
     static constexpr int kWords = kWindow / 64;
+    static constexpr int kSummary = (kWords + 63) / 64;
 
     struct Slot {
         std::uint32_t shares;
@@ -130,13 +160,25 @@ private:
     struct SideLadder {
         Slot lv[kWindow];
         std::uint64_t bits[kWords];
+        std::uint64_t summary[kSummary];  // bit w set <=> bits[w] != 0
         int best = -1;  // bids: highest non-empty index; asks: lowest
         std::uint32_t nlevels = 0;
+
+        void set_bit(int i) {
+            const int w = i >> 6;
+            bits[w] |= std::uint64_t{1} << (i & 63);
+            summary[w >> 6] |= std::uint64_t{1} << (w & 63);
+        }
+        void clear_bit(int i) {
+            const int w = i >> 6;
+            bits[w] &= ~(std::uint64_t{1} << (i & 63));
+            if (!bits[w]) summary[w >> 6] &= ~(std::uint64_t{1} << (w & 63));
+        }
 
         void add(int i, std::uint32_t q, bool is_bid) {
             Slot& l = lv[i];
             if (l.orders == 0) {
-                bits[i >> 6] |= std::uint64_t{1} << (i & 63);
+                set_bit(i);
                 ++nlevels;
                 if (best < 0 || (is_bid ? i > best : i < best)) best = i;
             }
@@ -151,7 +193,7 @@ private:
             if (order_gone) --l.orders;
             if (l.orders != 0) return;
             l.shares = 0;
-            bits[i >> 6] &= ~(std::uint64_t{1} << (i & 63));
+            clear_bit(i);
             --nlevels;
             if (i == best) best = is_bid ? prev_set(i) : next_set(i);
         }
@@ -159,31 +201,68 @@ private:
         // Places a whole level into an empty slot (used when recentering).
         void put(int i, const Level& l, bool is_bid) {
             lv[i] = Slot{static_cast<std::uint32_t>(l.shares), l.orders};
-            bits[i >> 6] |= std::uint64_t{1} << (i & 63);
+            set_bit(i);
             ++nlevels;
             if (best < 0 || (is_bid ? i > best : i < best)) best = i;
         }
 
+        template <class F>
+        void for_each_set(F&& f) const {
+            for (int sw = 0; sw < kSummary; ++sw)
+                for (std::uint64_t sm = summary[sw]; sm; sm &= sm - 1) {
+                    const int w = sw * 64 + __builtin_ctzll(sm);
+                    for (std::uint64_t m = bits[w]; m; m &= m - 1) f(w * 64 + __builtin_ctzll(m));
+                }
+        }
+
+        // Empties the side, touching only the levels in use.
+        void clear() {
+            for_each_set([&](int i) { lv[i] = Slot{0, 0}; });
+            for (int sw = 0; sw < kSummary; ++sw)
+                for (std::uint64_t sm = summary[sw]; sm; sm &= sm - 1) bits[sw * 64 + __builtin_ctzll(sm)] = 0;
+            for (int sw = 0; sw < kSummary; ++sw) summary[sw] = 0;
+            best = -1;
+            nlevels = 0;
+        }
+
         // Highest set index below i, or -1.
         [[nodiscard]] int prev_set(int i) const {
-            int w = i >> 6;
-            std::uint64_t m = bits[w] & ((std::uint64_t{1} << (i & 63)) - 1);
-            while (true) {
+            const int w = i >> 6;
+            if (i & 63) {
+                const std::uint64_t m = bits[w] & ((std::uint64_t{1} << (i & 63)) - 1);
                 if (m) return w * 64 + 63 - __builtin_clzll(m);
-                if (--w < 0) return -1;
-                m = bits[w];
             }
+            if (w == 0) return -1;
+            const int pw = w - 1;  // highest word still to consider
+            int sw = pw >> 6;
+            const int sb = pw & 63;
+            std::uint64_t sm = summary[sw] & (sb == 63 ? ~std::uint64_t{0} : ((std::uint64_t{1} << (sb + 1)) - 1));
+            while (!sm) {
+                if (sw == 0) return -1;
+                sm = summary[--sw];
+            }
+            const int nw = sw * 64 + 63 - __builtin_clzll(sm);
+            return nw * 64 + 63 - __builtin_clzll(bits[nw]);
         }
 
         // Lowest set index above i, or -1.
         [[nodiscard]] int next_set(int i) const {
-            int w = i >> 6;
-            std::uint64_t m = (i & 63) == 63 ? 0 : bits[w] & (~std::uint64_t{0} << ((i & 63) + 1));
-            while (true) {
+            const int w = i >> 6;
+            if ((i & 63) != 63) {
+                const std::uint64_t m = bits[w] & (~std::uint64_t{0} << ((i & 63) + 1));
                 if (m) return w * 64 + __builtin_ctzll(m);
-                if (++w >= kWords) return -1;
-                m = bits[w];
             }
+            const int nwi = w + 1;  // lowest word still to consider
+            int sw = nwi >> 6;
+            if (sw >= kSummary) return -1;
+            const int sb = nwi & 63;
+            std::uint64_t sm = summary[sw] & (~std::uint64_t{0} << sb);
+            while (!sm) {
+                if (++sw >= kSummary) return -1;
+                sm = summary[sw];
+            }
+            const int nw = sw * 64 + __builtin_ctzll(sm);
+            return nw * 64 + __builtin_ctzll(bits[nw]);
         }
     };
 
@@ -192,9 +271,19 @@ private:
         SideLadder ask;
     };
 
+    // mmap'd so the OS supplies zero pages on first touch: untouched parts of a
+    // wide window cost no memory. Ladder is trivially destructible.
+    struct Unmap {
+        void operator()(Ladder* p) const { ::munmap(p, sizeof(Ladder)); }
+    };
+
     void anchor(Price p) {
         set_window(p);
-        lad_ = std::make_unique<Ladder>();  // value-initialized: all levels and bits zero
+        void* mem = ::mmap(nullptr, sizeof(Ladder), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+        if (mem == MAP_FAILED) throw std::bad_alloc();
+        // Placement-new writes only the members with initializers (best, nlevels);
+        // the level arrays and bitmaps keep the zeros the kernel provided.
+        lad_.reset(new (mem) Ladder);
     }
 
     void set_window(Price p) {
@@ -222,8 +311,8 @@ private:
             for_each_level(sd, [&](Price p, const Level& l) { all.push_back({sd, p, l}); });
         obids_.clear();
         oasks_.clear();
-        lad_->bid = SideLadder{};
-        lad_->ask = SideLadder{};
+        lad_->bid.clear();
+        lad_->ask.clear();
         set_window(center);
         for (const Saved& sv : all) {
             int i;
@@ -260,7 +349,7 @@ private:
         if (it->second.orders == 0) m.erase(it);
     }
 
-    std::unique_ptr<Ladder> lad_;
+    std::unique_ptr<Ladder, Unmap> lad_;
     Price base_ = 0;
     Price tick_ = 1;
     std::map<Price, Level, std::greater<>> obids_;
@@ -270,6 +359,6 @@ private:
     std::uint32_t misses_ = 0;
 };
 
-using FastBook = FastBookT<true>;
+using FastBook = FastBookT<true, ITCH_LADDER_WINDOW>;
 
 }  // namespace lob

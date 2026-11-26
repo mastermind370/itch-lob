@@ -253,3 +253,76 @@ TEST(FastBook, NoRecenterWhenTouchIsInWindow) {
     EXPECT_EQ(b.recenters(), 0u);
     EXPECT_EQ(b.best_ask().price, 500'100u);
 }
+
+// Window sizes: 64 ticks (one bitmap word, constant overflow and recentering),
+// 32K ticks (multi-word summary bitmap). Random ops must match MapBook exactly,
+// with a drifting touch so recentering moves levels both ways.
+namespace {
+template <class Book>
+void random_ops_vs_map(std::uint64_t seed, int n) {
+    MapBook ref;
+    Book fast;
+    SplitMix64 rng(seed);
+    struct O { Side s; Price p; std::uint32_t q; };
+    std::vector<O> live;
+    Price mid = 500'000;
+    for (int i = 0; i < n; ++i) {
+        if (rng.below(200) == 0) mid += rng.below(2) ? 50'000 : 0;  // occasional $5 jumps up
+        if (live.size() < 50 || rng.below(2)) {
+            const Side s = rng.below(2) ? Side::Buy : Side::Sell;
+            Price off = static_cast<Price>(100 * (1 + rng.below(300)));
+            if (rng.below(20) == 0) off = static_cast<Price>(100 * rng.below(20'000));  // very deep
+            const Price p = s == Side::Buy ? (mid > off + 100 ? mid - off : 100) : mid + off;
+            const std::uint32_t q = 1 + static_cast<std::uint32_t>(rng.below(300));
+            ref.add(s, p, q);
+            fast.add(s, p, q);
+            live.push_back({s, p, q});
+        } else {
+            const std::size_t k = rng.below(live.size());
+            O& o = live[k];
+            const std::uint32_t q = 1 + static_cast<std::uint32_t>(rng.below(o.q));
+            const bool gone = q == o.q;
+            ref.reduce(o.s, o.p, q, gone);
+            fast.reduce(o.s, o.p, q, gone);
+            o.q -= q;
+            if (gone) { live[k] = live.back(); live.pop_back(); }
+        }
+        ASSERT_EQ(fast.best_bid().price, ref.best_bid().price);
+        ASSERT_EQ(fast.best_bid().shares, ref.best_bid().shares);
+        ASSERT_EQ(fast.best_ask().price, ref.best_ask().price);
+        ASSERT_EQ(fast.best_ask().shares, ref.best_ask().shares);
+    }
+    for (Side s : {Side::Buy, Side::Sell}) {
+        EXPECT_EQ(fast.level_count(s), ref.level_count(s));
+        fast.for_each_level(s, [&](Price p, const lob::Level& l) { EXPECT_EQ(l.shares, ref.level(s, p).shares); });
+    }
+}
+}  // namespace
+
+TEST(FastBook, TinyWindowMatchesMapBook) {
+    random_ops_vs_map<lob::FastBookT<true, 64>>(11, 200'000);
+    lob::FastBookT<true, 64> b;
+    b.add(Side::Buy, 1'000'000, 1);
+    for (int i = 0; i < 1000; ++i) b.add(Side::Sell, 3'000'000, 1);  // touch leaves the window -> recenter
+    EXPECT_TRUE(b.recenters() >= 1u);
+}
+
+TEST(FastBook, WideWindowMatchesMapBook) {
+    random_ops_vs_map<lob::FastBookT<true, 32768>>(12, 200'000);
+    random_ops_vs_map<lob::FastBookT<false, 32768>>(13, 100'000);
+}
+
+TEST(FastBook, WideWindowFindsFarLevelsAcrossSummaryWords) {
+    lob::FastBookT<true, 32768> b;
+    b.add(Side::Buy, 2'000'000, 1);   // $200 anchor: window ~ $36 .. $363
+    b.add(Side::Buy, 400'000, 2);     // 16,000 ticks below: different summary word
+    b.add(Side::Sell, 3'500'000, 3);
+    b.add(Side::Sell, 2'000'100, 4);
+    EXPECT_EQ(b.overflow_adds(), 0u);
+    b.reduce(Side::Buy, 2'000'000, 1, true);
+    EXPECT_EQ(b.best_bid().price, 400'000u);
+    b.reduce(Side::Sell, 2'000'100, 4, true);
+    EXPECT_EQ(b.best_ask().price, 3'500'000u);
+    b.reduce(Side::Buy, 400'000, 2, true);
+    EXPECT_EQ(b.best_bid().price, 0u);
+}

@@ -169,6 +169,56 @@ def fmt(v, nd=1):
     return "—" if v is None else f"{v:,.{nd}f}"
 
 
+def update_readme(parse, bchk, fchk, abl, lfast, lmap, eng, pipe, headline, bullet):
+    """Rewrites the block between the results markers in README.md."""
+    path = os.path.join(ROOT, "README.md")
+    if not os.path.exists(path):
+        return
+    text = open(path).read()
+    begin, end = "<!-- results:begin -->", "<!-- results:end -->"
+    if begin not in text or end not in text:
+        return
+    rows = ["| Component | Result |", "|---|---|"]
+    if parse:
+        rows.append(f"| ITCH 5.0 parser (zero-copy) | {parse['mmsgs_per_s_best']:.0f}M msgs/s, {parse['gb_per_s_best']:.1f} GB/s, "
+                    f"{parse['ns_per_msg_best']:.1f} ns/msg |")
+    if headline:
+        rows.append(f"| Order book replay (parse + book) | {headline['mps']:.1f}M msgs/s, **{headline['speedup']:.2f}×** "
+                    f"the std::map baseline |")
+    if lfast:
+        rows.append(f"| Book latency per message | p50 {lfast['p50_ns']:.0f} ns, **p99 {lfast['p99_ns']:.0f} ns**, "
+                    f"p99.9 {lfast['p99_9_ns']:.0f} ns |")
+    if eng:
+        rows.append(f"| Matching engine (price-time) | {eng['fast_orders_per_s'] / 1e6:.1f}M orders/s, "
+                    f"{eng['fast_ns_per_order']:.1f} ns/order, {eng['speedup']:.2f}× the reference |")
+    if pipe and "throughput_mmsgs_per_s" in pipe:
+        t = pipe["throughput_mmsgs_per_s"]
+        rows.append(f"| Two-thread SPSC pipeline | {t['pipeline']['median']:.1f}M msgs/s; queue adds "
+                    f"{pipe['latency_pipeline']['p50_ns'] - pipe['latency_inline']['p50_ns']:.0f} ns at p50 |")
+    checks = []
+    if fchk:
+        checks.append(f"{fchk['level_checks'] / 1e6:.1f}M per-message level checks and {fchk.get('best_checks', 0) / 1e6:.1f}M "
+                      f"best bid/ask checks, {fchk['level_mismatches'] + fchk['audit_mismatches'] + fchk.get('best_mismatches', 0)} mismatches")
+    if eng:
+        checks.append(f"{eng['diff_passed']}/{eng['diff_seeds']} randomized engine seeds × {eng['diff_orders_per_seed'] / 1e6:.0f}M orders identical to the reference")
+    if checks:
+        rows.append(f"| Correctness | {'; '.join(checks)} |")
+    block = [begin, "", *rows, ""]
+    if headline:
+        block.append(f"Input: {headline['n']:.1f}M messages of real NASDAQ data (12/30/2019 sample). Full tables, ablations and "
+                     "latency plots: [`results/REPORT.md`](results/REPORT.md).")
+        block.append("")
+        block.append("![Order book ablation](results/plots/ablation_book.svg)")
+        block.append("")
+    if bullet:
+        block += ["**Resume bullet:**", "", f"> {bullet}", ""]
+    block.append(end)
+    a, b = text.index(begin), text.index(end) + len(end)
+    with open(path, "w") as f:
+        f.write(text[:a] + "\n".join(block) + text[b:])
+    print("updated README.md results block")
+
+
 def main():
     os.makedirs(PLOTS, exist_ok=True)
     parse, bchk, fchk = load("parse.json"), load("baseline_check.json"), load("fast_check.json")
@@ -205,17 +255,27 @@ def main():
         md += ["## Order book: what each optimization bought", "",
                f"Each variant replays the full file; {abl['reps']} interleaved runs, median and range of ns per message "
                "(parse + book update).", "",
-               "| Variant | ns/msg (median) | Range | vs baseline | vs previous step | M msgs/s |", "|---|---|---|---|---|---|"]
+               "| Variant | ns/msg (median) | Range | vs baseline | vs previous step | M msgs/s | adds to overflow | ladder RAM |",
+               "|---|---|---|---|---|---|---|---|"]
         for x in abl["variants"]:
             n = x["ns_per_msg"]
             prev = f"{v[x['prev']]['ns_per_msg']['median'] / n['median']:.2f}×" if x["prev"] else "—"
-            md.append(f"| {x['label']} | {n['median']:.1f} | {n['min']:.1f} – {n['max']:.1f} | "
-                      f"{x['speedup_vs_baseline']:.2f}× | {prev} | {1e3 / n['median']:.1f} |")
-        md += ["", "“vs previous step” follows baseline → flat orders → flat ladder → recenter; "
-               "“flat ladder + std::unordered_map” isolates the ladder alone.", ""]
-        nl, rc = v["flat_ladder"], v["recenter"]
-        md += [f"Without recentering, {nl['overflow_adds']:,} adds land in the std::map overflow; with it, "
-               f"{rc['overflow_adds']:,} ({rc['recenters']:,} recenters).", ""]
+            ov = f"{x['overflow_adds']:,}" if "ladder" in x["key"] or x["key"] in ("recenter", "window_8k", "window_32k") else "—"
+            ram = (f"{x['ladder_resident_mb']:.0f} MB of {x['ladder_reserved_mb']:.0f} MB reserved"
+                   if x.get("ladder_reserved_mb") else "—")
+            md.append(f"| {x['label'].strip()} | {n['median']:.1f} | {n['min']:.1f} – {n['max']:.1f} | "
+                      f"{x['speedup_vs_baseline']:.2f}× | {prev} | {1e3 / n['median']:.1f} | {ov} | {ram} |")
+        md += ["", "“vs previous step” follows baseline → flat orders → flat ladder → recenter; the window rows compare "
+               "against the 2,048-tick recentering book; “flat ladder + std::unordered_map” isolates the ladder alone. "
+               "Ladders are mmap'd, so a wide window reserves address space but only touched pages use RAM "
+               "(measured with `mincore`).", ""]
+        rc = v["recenter"]
+        wins = [k for k in ("recenter", "window_8k", "window_32k") if k in v]
+        best = min(wins, key=lambda k: v[k]["ns_per_msg"]["median"])
+        win_ticks = {"recenter": 2048, "window_8k": 8192, "window_32k": 32768}
+        md += [f"Fastest window: **{win_ticks[best]:,} ticks** ({v[best]['ns_per_msg']['median']:.1f} ns/msg, "
+               f"{v[best]['overflow_adds']:,} overflow adds). Build with it: "
+               f"`cmake -S . -B build -DITCH_LADDER_WINDOW={win_ticks[best]}`.", ""]
         c = rc["counters"]
         if c.get("hw"):
             md += ["Hardware counters per message (final variant vs baseline):", "",
@@ -321,14 +381,19 @@ def main():
         md += ["", "![Pipeline ablation](plots/ablation_pipeline.svg)", "", "![Pipeline latency](plots/latency_pipeline.svg)", ""]
 
     # Resume numbers.
+    headline = {}
     if abl and lfast:
-        rc = {x["key"]: x for x in abl["variants"]}["recenter"]
+        vv = {x["key"]: x for x in abl["variants"]}
+        key = {2048: "recenter", 8192: "window_8k", 32768: "window_32k"}.get(lfast.get("ladder_window", 2048), "recenter")
+        rc = vv.get(key, vv["recenter"])
         mps = 1e3 / rc["ns_per_msg"]["median"]
         md += ["## Headline numbers", "",
                f"- Messages replayed: **{abl['messages'] / 1e6:.1f}M**",
                f"- Fast book throughput (parse + book): **{mps:.1f}M msgs/s** ({rc['ns_per_msg']['median']:.1f} ns/msg)",
                f"- Fast book p99 per message: **{lfast['p99_ns']:.0f} ns** (p99.9 {lfast['p99_9_ns']:.0f} ns)",
-               f"- Speedup over std::map baseline: **{rc['speedup_vs_baseline']:.2f}×**"]
+               f"- Speedup over std::map baseline: **{rc['speedup_vs_baseline']:.2f}×**",
+               f"- Build: {lfast.get('ladder_window', 2048):,}-tick price window"]
+        headline = {"n": abl["messages"] / 1e6, "mps": mps, "p99": lfast["p99_ns"], "speedup": rc["speedup_vs_baseline"]}
         if parse:
             md.append(f"- Parser alone: **{parse['mmsgs_per_s_best']:.0f}M msgs/s** ({parse['gb_per_s_best']:.1f} GB/s)")
         if eng:
@@ -336,8 +401,16 @@ def main():
                       f"{eng['speedup']:.2f}× the reference, {eng['diff_passed']}/{eng['diff_seeds']} randomized seeds passed")
         md.append("")
 
+    bullet = None
+    if headline:
+        bullet = (f"Replayed {headline['n']:.1f}M NASDAQ ITCH 5.0 messages at {headline['mps']:.1f}M msgs/s with "
+                  f"{headline['p99']:.0f} ns p99 latency, {headline['speedup']:.1f}× faster than a std::map baseline, "
+                  "using a flat price ladder and a lock-free SPSC queue.")
+        md += ["## Resume bullet", "", f"> {bullet}", ""]
+
     with open(os.path.join(RES, "REPORT.md"), "w") as f:
         f.write("\n".join(md))
+    update_readme(parse, bchk, fchk, abl, lfast, lmap, eng, pipe, headline, bullet)
     print("wrote results/REPORT.md and", ", ".join(sorted(os.listdir(PLOTS))))
 
 
