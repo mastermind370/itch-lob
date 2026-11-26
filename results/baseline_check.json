@@ -1,0 +1,10 @@
+{
+  "stage": 2,
+  "messages": 48058456,
+  "level_checks": 50894699,
+  "level_mismatches": 0,
+  "audit_levels": 735322,
+  "audit_mismatches": 0,
+  "anomalies": 0,
+  "passed": true
+}

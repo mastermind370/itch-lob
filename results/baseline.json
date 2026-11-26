@@ -1,0 +1,15 @@
+{
+  "stage": 2,
+  "book": "std::map",
+  "file": "data/12302019.slice.itch",
+  "messages": 48058456,
+  "reps": 3,
+  "seconds_best": 7.75299,
+  "seconds_median": 7.774,
+  "mmsgs_per_s_best": 6.1987,
+  "mmsgs_per_s_median": 6.18195,
+  "ns_per_msg_best": 161.324,
+  "ns_per_msg_median": 161.761,
+  "live_orders_end": 1726008,
+  "levels_end": 735322
+}
