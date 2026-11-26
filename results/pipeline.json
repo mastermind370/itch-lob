@@ -1,0 +1,21 @@
+{
+  "stage": 5,
+  "messages": 48058456,
+  "queue_slots": 4096,
+  "event_bytes": 40,
+  "placement": "qos=user-interactive",
+  "inline_mmsgs_per_s": 18.6449,
+  "inline_ns_per_msg": 53.6339,
+  "pipeline_mmsgs_per_s": 16.1696,
+  "pipeline_no_head_batch_mmsgs_per_s": 8.36366,
+  "pipeline_no_padding_mmsgs_per_s": 10.526,
+  "pipeline_naive_mmsgs_per_s": 12.3799,
+  "pipeline_padded_full_spins": 2829352441,
+  "pipeline_padded_empty_spins": 4429203,
+  "latency_resolution_ns": 18,
+  "paced_rate_mmsgs_per_s": 8.08481,
+  "paced_late_fraction": 0.0228992,
+  "latency_inline": {"mean_ns": 107.5, "p50_ns": 125.0, "p90_ns": 167.0, "p99_ns": 334.0, "p99_9_ns": 709.0, "p99_99_ns": 1601.0, "max_ns": 294801.0},
+  "latency_pipeline": {"mean_ns": 12870.7, "p50_ns": 250.0, "p90_ns": 917.0, "p99_ns": 489840.0, "p99_9_ns": 670303.0, "p99_99_ns": 888844.0, "max_ns": 2116606.0},
+  "books_match": true
+}

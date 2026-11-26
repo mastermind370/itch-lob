@@ -2,7 +2,7 @@
 
 A low-latency order book and matching engine in C++20, built by replaying real NASDAQ TotalView-ITCH 5.0 market data.
 
-> Work in progress. Stages 1–4 of 7 are done: the parser, the baseline and fast books, and the matching engine.
+> Work in progress. Stages 1–5 of 7 are done: the parser, the baseline and fast books, the matching engine and the lock-free pipeline.
 
 ## Status
 
@@ -12,7 +12,7 @@ A low-latency order book and matching engine in C++20, built by replaying real N
 | 2 | Baseline `std::map` order book + per-message correctness check | ✅ |
 | 3 | Fast order book (flat price ladder, preallocated order map) + latency percentiles | ✅ |
 | 4 | Price-time matching engine + randomized differential test | ✅ |
-| 5 | Lock-free SPSC pipeline (parser thread → engine thread) | — |
+| 5 | Lock-free SPSC pipeline (parser thread → book thread) | ✅ |
 | 6 | Benchmark report: latency histograms, ablation table | — |
 | 7 | Architecture diagram, final results | — |
 
@@ -116,8 +116,33 @@ ITCH data is already matched, so the engine runs on its own order flow: `engine:
 
 | Machine | Diff test | Orders/s | ns/order | Fills/s | Speedup vs ref | p50 | p99 | p99.9 |
 |---|---|---|---|---|---|---|---|---|
-| MacBook | — | — | — | — | — | — | — | — |
+| MacBook, Apple clang 17 | 10/10 seeds × 1M passed (2.44M fills) | 87.3M | 11.5 | 15.1M | 4.54× | < 41 ns* | < 41 ns* | 84 ns |
 | 2-vCPU x86 cloud VM (sanity check only) | 4/4 seeds × 1M passed | 39.9M | 25.1 | 6.9M | 3.96× | 60 ns | 146 ns | 260 ns |
+
+\* The Mac's counter advances in 41 ns steps and a typical order takes about 11 ns, so p50 and p99 fall below one step. p99.9 is the first percentile above it, and p99.99 is 125 ns.
+
+## Stage 5: lock-free pipeline
+
+```bash
+./build/pipeline_bench data/12302019.slice.itch --reps 3   # -> results/pipeline.json
+```
+
+The parser thread decodes each frame and pushes a 40-byte `Event` for every order message into a single-producer single-consumer ring buffer. The book thread pops events and applies them to the Stage 3 fast book. Every run's final books are hashed and checked against the single-thread run.
+
+- **`pipeline::SpscQueue`.** A power-of-two ring with 64-bit monotonically increasing indices, using only acquire/release (no CAS). Three optimizations can each be switched off for the ablation:
+  - **Cache-line padding.** Producer state, consumer state and slots each get their own 128-byte line, which is the line size on Apple Silicon and also covers Intel's paired-line prefetch.
+  - **Cached indices.** Each side keeps a private copy of the other side's index and reads the shared atomic only when the queue looks full or empty.
+  - **Batched head publication.** The consumer publishes its read position every 32 pops, or immediately when it finds the queue empty. Without this, a full queue makes the producer re-read `head` after every pop, so that line moves between cores once per message. Latency doesn't change, because the producer still publishes every push immediately.
+- **Thread placement.** On Linux the threads are pinned to CPUs 0 and 1. macOS has no hard affinity on Apple Silicon, so both threads ask for the user-interactive QoS class, which the scheduler keeps on performance cores.
+- **Latency.** Each event carries the tick at which the producer started parsing it, and the consumer records the time after applying it. That covers parse, enqueue, core-to-core transfer, dequeue and book update. The producer is paced to a fixed rate (by default half the measured pipeline throughput), so the numbers measure the path rather than a backlog. The tool warns if the producer falls behind.
+- **Tests.** Two-thread ordering and sum checks on 8-slot rings for every variant. Pipeline vs single-thread digest on a synthetic feed, including a 2-slot unpadded ring. ThreadSanitizer is clean.
+
+| Machine | Inline | Pipeline | No head batching | No padding | Naive | Latency, inline p50 / p99 | Latency, pipeline p50 / p99 |
+|---|---|---|---|---|---|---|---|
+| MacBook | — | — | — | — | — | — | — |
+| 2-vCPU x86 KVM VM (sanity check only) | 12.4M msgs/s | 8.2M | 7.1M | 5.2M | 5.2M | 168 / 449 ns | 594 / 239,000 ns at 1M msgs/s** |
+
+\*\* On this VM the two-thread runs are slower than one thread, and the tail is dominated by hypervisor preemption: the producer itself misses about 4% of its send times even at 1M msgs/s. The padding and batching ablation still shows the expected ordering.
 
 ## Layout
 
@@ -125,8 +150,9 @@ ITCH data is already matched, so the engine runs on its own order flow: `engine:
 include/itch/   endian.hpp  messages.hpp  parser.hpp  encoder.hpp  synthetic.hpp  mapped_file.hpp
 include/lob/    map_book.hpp  fast_book.hpp  order_map.hpp  book_builder.hpp  checker.hpp
 include/engine/ types.hpp  ref_engine.hpp  fast_engine.hpp  order_flow.hpp  diff.hpp
+include/pipeline/ spsc_queue.hpp  pipeline.hpp  cpu.hpp
 include/bench/  latency.hpp
-tools/          itch_stats  itch_slice  gen_synthetic  book_replay  engine_bench
+tools/          itch_stats  itch_slice  gen_synthetic  book_replay  engine_bench  pipeline_bench
 tests/          GoogleTest unit tests
 scripts/        fetch_sample.sh
 results/        JSON written by the tools; README tables are filled from these
